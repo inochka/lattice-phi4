@@ -56,7 +56,7 @@ print(list(np.power(f_res_1["g^4"], 0.25)))
 plt.plot(f_res_1["g^4"], f_res_1["f"])
 
 
-plt.savefig("f(g).png")
+plt.savefig("img/f(g).png")
 plt.show()
 
 f_res_1.to_csv(f"data/free_energy_{d}.csv")
