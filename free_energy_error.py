@@ -40,7 +40,7 @@ plt.xlim((1., 50.))
 #plt.ylim((0., .120))
 plt.legend(loc='upper left', shadow=True, fontsize='x-large')
 plt.grid()
-plt.savefig(f"err_f(g)_{d}.png")
+plt.savefig(f"img/err_f(g)_{d}.png")
 
 plt.show()
 

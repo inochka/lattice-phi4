@@ -1,7 +1,12 @@
 import numpy as np
 from numba import jit
 from tqdm import tqdm
+from itertools import product
+from multiprocessing.shared_memory import SharedMemory
+import multiprocessing as mp
+import logging
 
+logger = logging.getLogger(__name__)
 
 def jackknife(samples: np.ndarray):
     """Return mean and estimated lower error bound."""
@@ -63,9 +68,8 @@ def get_corr_func_mom(cfgs: np.ndarray, p: np.ndarray):
     for shift in tqdm(shifts_coords):
         #corr_func.append(np.roll(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=0), -shift,
         #                         axis=(spatial_axis - 1)))
-        #correlator.append(np.mean(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=0)))
-        correlator.append(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=spatial_axis))
-        #break
+        correlator.append(np.mean(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=0)))
+        #correlator.append(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=spatial_axis))
 
     correlator = np.array(correlator)
 
@@ -75,6 +79,38 @@ def get_corr_func_mom(cfgs: np.ndarray, p: np.ndarray):
                    axis=1)
 
     return np.array([jackknife(sample) for sample in corrs])
+
+def get_corr_func_mom_optimized(cfgs: np.ndarray, p: np.ndarray):
+    d = cfgs.ndim - 1
+    L = cfgs.shape[1]
+    K = int(min(5e5, cfgs.shape[0] * L**(d-1)))
+
+    assert len(p) == L
+    spatial_axis = tuple(np.arange(1, d + 1))
+
+    # Генерируем сдвиги на лету с помощью product и tqdm
+    shifts_coords = tqdm(product(*[range(L)] * d), total=L ** d)
+
+    corrs = []
+    # TODO: брать одномерный массив shifts??
+    for i, shift in enumerate(shifts_coords):
+        indices_to_leave = np.random.rand()
+        cos_values = np.cos(p @ np.array(shift))
+        #corrs.append(np.sum(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=tuple(range(0,d))) * cos_values))
+        #corrs.append(np.sum(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=0)
+        #                    * np.expand_dims(cos_values, axis=0), axis=1).flatten())
+        # готовим массив, чтобы потом просуммировать по сдвигам. Для одновременного учета всех импульсов используем векторизацию
+        # также используем, что импульсов имеется одномерный массив, и все остальные измерения (0+все, кроме последнего пространственного)
+        # дают нам просто большее количество выборок
+        corrs.append((cfgs * np.roll(cfgs, shift, axis=spatial_axis)
+                      * np.expand_dims(cos_values, axis=tuple(np.arange(0, d+1)))).reshape(-1, L)[])
+        # TODO: доделать и доразобраться со всем
+
+    logger.info(f"Taking sum over all shifts...")  # останутся только разные выборки (N * L^d) + импульсы
+    corrs = np.sum(np.array(corrs), axis=0).T  # суммируем теперь по всем сдвигам
+    logger.info(f"Calculating means using jackknife...")
+    return np.array([jackknife(sample) for sample in corrs])
+
 
 def get_momenta_grid(M: int, d: int):
     """

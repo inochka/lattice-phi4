@@ -1,6 +1,7 @@
 import numpy as np
 import copy
 
+# TODO: почекать через cp, мб будет быстрее, чем np
 
 class Lattice:
     def __init__(self, M, d, alpha, gamma, G):

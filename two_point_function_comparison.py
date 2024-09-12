@@ -14,9 +14,8 @@ alpha = 1.
 gamma = 1.
 
 momenta_grid = np.array([[p] + [0.] * (d - 1) for p in np.linspace(-np.pi, np.pi, 50)])
-two_point_num = pd.read_csv(f'data/two_point_{d}.csv')
-
-#momenta_grid = 2 * np.pi / M * np.array([[p, 0.] for p in range(M)])
+two_point_num = pd.read_csv(f'data_enhanced/two_point_data_immediate.csv')
+#two_point_num = pd.read_csv(f'data/two_point_{d}.csv')
 
 print(momenta_grid)
 DATA_DIRECTORY = Path("./data_enhanced/")
@@ -84,8 +83,7 @@ plt.legend(loc='upper left', shadow=True, fontsize='x-large', handles=legend_lin
 #plt.title("Two-point function comparison (strong coupling)", fontsize=23)
 plt.title("Two-point function comparison (weak coupling)", fontsize=23)
 plt.grid()
-#plt.savefig(f"two_point_all_num_{d}.png")
-plt.savefig(f"two_point_comparison_weak_all_{d}.png")
+plt.savefig(f"immediate_calc/two_point_comparison_weak_all_{d}.png")
 #plt.savefig(f"two_point_comparison_strong_{d}.png")
 
 plt.show()
