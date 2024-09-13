@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(threadName)s - %(name)s - %(levelname)s - %(message)s')
 
 DATA_DIRECTORY = Path("./data_enhanced/")
-APPEND_EVERY = 1
+APPEND_EVERY = 10
 FILE_PATH = DATA_DIRECTORY / f"two_point_data_immediate_{d}.csv"
 
 def compute_corr_func(lock, params):

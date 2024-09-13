@@ -83,7 +83,8 @@ def get_corr_func_mom(cfgs: np.ndarray, p: np.ndarray):
 def get_corr_func_mom_optimized(cfgs: np.ndarray, p: np.ndarray):
     d = cfgs.ndim - 1
     L = cfgs.shape[1]
-    K = int(min(5e5, cfgs.shape[0] * L**(d-1)))
+    samples_num = cfgs.shape[0] * L**(d-1)
+    K = int(min(1e6, samples_num))
 
     assert len(p) == L
     spatial_axis = tuple(np.arange(1, d + 1))
@@ -91,23 +92,27 @@ def get_corr_func_mom_optimized(cfgs: np.ndarray, p: np.ndarray):
     # Генерируем сдвиги на лету с помощью product и tqdm
     shifts_coords = tqdm(product(*[range(L)] * d), total=L ** d)
 
-    corrs = []
+    #corrs = []
+    corrs = np.zeros((K, L))
     # TODO: брать одномерный массив shifts??
     for i, shift in enumerate(shifts_coords):
-        indices_to_leave = np.random.rand()
+        if K < samples_num:
+            indices_to_leave = np.random.randint(low=0, high=samples_num, size=K)
+        else:
+            indices_to_leave = list(np.arange(0, samples_num))
         cos_values = np.cos(p @ np.array(shift))
-        #corrs.append(np.sum(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=tuple(range(0,d))) * cos_values))
-        #corrs.append(np.sum(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=0)
-        #                    * np.expand_dims(cos_values, axis=0), axis=1).flatten())
         # готовим массив, чтобы потом просуммировать по сдвигам. Для одновременного учета всех импульсов используем векторизацию
         # также используем, что импульсов имеется одномерный массив, и все остальные измерения (0+все, кроме последнего пространственного)
         # дают нам просто большее количество выборок
-        corrs.append((cfgs * np.roll(cfgs, shift, axis=spatial_axis)
-                      * np.expand_dims(cos_values, axis=tuple(np.arange(0, d+1)))).reshape(-1, L)[])
+        #corrs.append((cfgs * np.roll(cfgs, shift, axis=spatial_axis)
+        #              * np.expand_dims(cos_values, axis=tuple(np.arange(0, d+1)))).reshape(-1, L)[indices_to_leave])
+        corrs += (cfgs * np.roll(cfgs, shift, axis=spatial_axis)
+                  * np.expand_dims(cos_values, axis=tuple(np.arange(0, d+1)))).reshape(-1, L)[indices_to_leave]
         # TODO: доделать и доразобраться со всем
 
     logger.info(f"Taking sum over all shifts...")  # останутся только разные выборки (N * L^d) + импульсы
-    corrs = np.sum(np.array(corrs), axis=0).T  # суммируем теперь по всем сдвигам
+    #corrs = np.sum(np.array(corrs), axis=0).T  # суммируем теперь по всем сдвигам
+    corrs = corrs.T
     logger.info(f"Calculating means using jackknife...")
     return np.array([jackknife(sample) for sample in corrs])
 

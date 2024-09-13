@@ -14,7 +14,7 @@ alpha = 1.
 gamma = 1.
 
 momenta_grid = np.array([[p] + [0.] * (d - 1) for p in np.linspace(-np.pi, np.pi, 50)])
-two_point_num = pd.read_csv(f'data_enhanced/two_point_data_immediate.csv')
+two_point_num = pd.read_csv(f'data_enhanced/two_point_data_immediate_{d}.csv')
 #two_point_num = pd.read_csv(f'data/two_point_{d}.csv')
 
 print(momenta_grid)
