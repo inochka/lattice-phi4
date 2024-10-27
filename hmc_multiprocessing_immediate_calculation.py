@@ -10,7 +10,7 @@ from tqdm import tqdm
 from core.lattice import Lattice
 from core.utils import get_corr_func_mom, get_corr_func_mom_optimized, get_momenta_grid
 
-M = 16 #32
+M = 32
 
 G_s = [0.0, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0]
 #G_s = [0.0]

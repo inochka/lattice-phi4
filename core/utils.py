@@ -12,14 +12,16 @@ def cross_validation_mean_error_np(samples: np.ndarray, k: int = 100):
     folds = np.array_split(samples, k)  # Делим на фолды, учитывая размер выборки
     means = []
 
-    for i in range(k):
-        validation_samples = folds[i]
+    for i in tqdm(range(k)):
+        #validation_samples = folds[i]
         train_samples = np.concatenate([fold for j, fold in enumerate(folds) if j != i])
         means.append(train_samples.mean(axis=0))
+        #means.append(validation_samples.mean(axis=0))
+
 
     means = np.asarray(means)
     mean = means.mean(axis=0)
-    error = np.std(means, axis=0, ddof=1)  # Стандартное отклонение как оценка погрешности
+    error = np.sqrt(k) * np.std(means, axis=0, ddof=1)
 
     return np.array([mean, error])
 
