@@ -9,7 +9,7 @@ from tqdm import tqdm
 from matplotlib.lines import Line2D
 
 d = 3
-M = 32
+M = 16 #8 #32
 alpha = 1.
 gamma = 1.
 
@@ -17,7 +17,6 @@ momenta_grid = np.array([[p] + [0.] * (d - 1) for p in np.linspace(-np.pi, np.pi
 two_point_num = pd.read_csv(f'data_enhanced/two_point_data_immediate_{d}.csv')
 #two_point_num = pd.read_csv(f'data/two_point_{d}.csv')
 
-print(momenta_grid)
 DATA_DIRECTORY = Path("./data_enhanced/")
 
 colors = {

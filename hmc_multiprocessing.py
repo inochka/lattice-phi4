@@ -7,7 +7,7 @@ import logging
 from time import sleep
 from pathlib import Path
 
-M = 32
+M = 8 #32
 
 #G_s = list(np.power((np.linspace(0, 2, 20)), 4)) + list(np.power((np.linspace(2.1, 8, 20)), 4))
 #G_s = np.linspace(0, 50, 200)
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(threadName)s - %(name)s - %(levelname)s - %(message)s')
 
 DATA_DIRECTORY = Path("./data_enhanced/")
-APPEND_EVERY = 1
+APPEND_EVERY = 10
 
 def compute_cfgs(params):
     d, G, gamma, alpha = params

@@ -10,10 +10,10 @@ from tqdm import tqdm
 from core.lattice import Lattice
 from core.utils import get_corr_func_mom, get_corr_func_mom_optimized, get_momenta_grid
 
-M = 32
+M = 16 #32
 
-#G_s = [0.0, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0]
-G_s = [0.0]
+G_s = [0.0, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0]
+#G_s = [0.0]
 gammas = [1.]
 alpha = 1.
 d = 3
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(threadName)s - %(name)s - %(levelname)s - %(message)s')
 
 DATA_DIRECTORY = Path("./data_enhanced/")
-APPEND_EVERY = 10
+APPEND_EVERY = 1
 FILE_PATH = DATA_DIRECTORY / f"two_point_data_immediate_{d}.csv"
 
 def compute_corr_func(lock, params):
@@ -34,7 +34,9 @@ def compute_corr_func(lock, params):
 
     logger.info(f"Calculating field configurations...")
 
-    for _ in tqdm(range(1000)):
+    for _ in tqdm(range(5000)):
+        # возможно, для более высоких размерностей ему нужно дольше прогреваться.
+        # !! да, так и есть. для тройки - 5000, для двойки хватало и 1000
         phi, accepted = L.hmc()
 
     accepted_num = 0
