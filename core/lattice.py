@@ -1,7 +1,9 @@
 import numpy as np
 import copy
+from numba import njit
 
 # TODO: почекать через cp, мб будет быстрее, чем np
+
 
 class Lattice:
     def __init__(self, M, d, alpha, gamma, G):
@@ -18,6 +20,7 @@ class Lattice:
         self.phi = np.random.randn(*self.shape)
         self.action = self.get_action()
 
+
     def get_action(self):
         kinetic_part = 0.5 * (self.gamma + 2 * self.d * self.alpha) * (self.phi ** 2)
 
@@ -29,7 +32,8 @@ class Lattice:
         interaction_part = self.G / 24. * self.phi ** 4
         action = interaction_part + kinetic_part
 
-        return action.sum()
+        return np.sum(action)
+
 
     def get_action_gradient(self):
         """
@@ -46,6 +50,7 @@ class Lattice:
 
     def get_hamiltonian(self, chi, action):
         return 0.5 * np.sum(chi ** 2) + action
+
 
     def hmc(self, n_steps=100):
 

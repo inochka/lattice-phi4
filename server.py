@@ -1,19 +1,13 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
-from fastapi.encoders import jsonable_encoder
-import json
-from pydantic import Base
+import os
 
-class ComputationResult(Base)
+# Получить количество логических ядер (включая гиперпоточность)
+logical_cores = os.cpu_count()
 
-app = FastAPI()
-
-@app.post("/computation_result/")
-async def add_result():
-
-    return JSONResponse(jsonable_encoder(graph.make_list_of_models_for_nodes()))
-
-
-#if __name__ == "__main__":
-#    import uvicorn
-#    uvicorn.run(app, host="0.0.0.0", port=8003)
+# Альтернатива с использованием библиотеки `psutil` для более детального вывода
+try:
+    import psutil
+    physical_cores = psutil.cpu_count(logical=False)  # Физические ядра (без учета гиперпоточности)
+    logical_cores_psutil = psutil.cpu_count(logical=True)  # Логические ядра
+    print(f"Физические ядра: {physical_cores}, Логические ядра: {logical_cores_psutil}")
+except ImportError:
+    print(f"Логические ядра (включая гиперпоточность): {logical_cores}")

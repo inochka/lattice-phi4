@@ -1,9 +1,15 @@
 import numpy as np
 from tqdm import tqdm
+#import numba
+from numba import njit
 from itertools import product
 import logging
+from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
+
+numba_logger = logging.getLogger('numba')
+numba_logger.setLevel(logging.INFO)
 
 
 def cross_validation_mean_error_np(samples: np.ndarray, k: int = 100):
@@ -97,40 +103,69 @@ def get_corr_func_mom(cfgs: np.ndarray, p: np.ndarray):
 
     return np.array([jackknife(sample) for sample in corrs])
 
+
+@njit
+def process_shifts(cfgs, p, samples_num, spatial_axis, d, L):
+    corrs = np.zeros((samples_num, L))
+
+    # Перебираем возможные сдвиги по каждому измерению без использования product.
+    for shift_indices in range(L ** d):
+        if shift_indices % 100 == 0:
+            print(shift_indices)
+        # Инициализируем массив сдвигов как int
+        shift = np.empty(d, dtype=np.int64)
+        index = shift_indices
+        for i in range(d):
+            shift[i] = index % L
+            index //= L
+
+        # Преобразуем shift в float64 непосредственно перед операцией умножения
+        cos_values = np.cos(p @ shift.astype(np.float64))
+
+        # Применяем np.roll последовательно по каждой оси
+        rolled_cfgs = cfgs.copy()
+        for i in range(d):
+            rolled_cfgs = np.roll(rolled_cfgs, shift[i], axis=spatial_axis[i])
+
+        # Обновляем corrs, учитывая сдвиг, косинус и векторизацию
+        corrs += (rolled_cfgs * np.expand_dims(cos_values, axis=tuple(np.arange(0, d + 1)))).reshape(-1, L)
+
+    return corrs
+
+#@jit(nopython=True, parallel=True, fastmath=True)
+
+
 def get_corr_func_mom_optimized(cfgs: np.ndarray, p: np.ndarray):
     d = cfgs.ndim - 1
     L = cfgs.shape[1]
     samples_num = cfgs.shape[0] * L**(d-1)
-    #K = int(min(1e5, samples_num))
-    K = samples_num
     assert len(p) == L
     spatial_axis = tuple(np.arange(1, d + 1))
 
     # Генерируем сдвиги на лету с помощью product и tqdm
-    shifts_coords = tqdm(product(*[range(L)] * d), total=L ** d)
-
-    corrs = np.zeros((K, L))
-    # TODO: брать одномерный массив shifts??
-    for i, shift in enumerate(shifts_coords):
-        if K < samples_num:
-            indices_to_leave = np.random.randint(low=0, high=samples_num, size=K)
-        else:
-            indices_to_leave = list(np.arange(0, samples_num))
+    shifts_coords = product(*[range(L)] * d) #, total=L ** d)
+    corrs = np.zeros((samples_num, L))
+    ## TODO: брать одномерный массив shifts??
+    for i, shift in tqdm(enumerate(shifts_coords), total=L ** d):
         cos_values = np.cos(p @ np.array(shift))
+        cos_values = cos_values.reshape((1,) * (cfgs.ndim - 1) + (-1,))
         # готовим массив, чтобы потом просуммировать по сдвигам. Для одновременного учета всех импульсов используем векторизацию
         # также используем, что импульсов имеется одномерный массив, и все остальные измерения (0+все, кроме последнего пространственного)
         # дают нам просто большее количество выборок
-        corrs += (cfgs * np.roll(cfgs, shift, axis=spatial_axis)
-                  * np.expand_dims(cos_values, axis=tuple(np.arange(0, d+1)))).reshape(-1, L)[indices_to_leave]
+
+        #rolled_cfgs = np.roll(cfgs, shift, axis=spatial_axis)
+        #mult_result = cfgs * rolled_cfgs
+        #mult_result *= cos_values
+        #corrs += mult_result.reshape(-1, L)''
+
+        corrs += (cfgs * np.roll(cfgs, shift, axis=spatial_axis) * cos_values).reshape(-1, L)
 
     logger.info(f"Taking sum over all shifts...")  # останутся только разные выборки (N * L^d) + импульсы
-    #corrs = np.sum(np.array(corrs), axis=0).T  # суммируем теперь по всем сдвигам
     corrs = corrs.T
-    logger.info(f"Calculating means for batches...")
-    #grouped_data = np.array([np.mean(corrs[i:i + batch_size], axis=0) for i in range(0, len(corrs), batch_size)])
     logger.info(f"Calculating means and error using cross validation...")
     return np.array([cross_validation_mean_error_np(sample) for sample in corrs])
     #return np.array([jackknife(sample) for sample in grouped_data])
+
 
 
 def get_momenta_grid(M: int, d: int):
