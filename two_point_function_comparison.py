@@ -1,105 +1,252 @@
-from pathlib import Path
-import os
+"""Plot numerical two-point functions with analytical weak/strong expansions."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from matplotlib.lines import Line2D
 from tqdm import tqdm
 
-from analytical_expressions import two_point_correlator_amputated_w, two_point_correlator_amputated_s, G_xi_s, G_xi_w
+from analytical_expressions import (
+    G_xi_s,
+    G_xi_w,
+    two_point_correlator_amputated_s,
+    two_point_correlator_amputated_w,
+)
+from simulation_utils import (
+    cache_key,
+    configure_logging,
+    load_config,
+    project_path,
+    read_csv,
+    require_keys,
+)
 
-d = 3
-M = 8
-alpha = 1.
-gamma = 1.
+LOGGER = logging.getLogger(__name__)
 
-momenta_grid = np.array([[p] + [0.] * (d - 1) for p in np.linspace(-np.pi, np.pi, 50)])
-two_point_num = pd.read_csv(f'data_enhanced/two_point_data_immediate_{d}_averaged.csv')
 
-DATA_DIRECTORY = Path("./data_enhanced/")
+def _selected_couplings(couplings: list[float], config: dict, regime: str) -> list[float]:
+    plot = config["plot"]
+    if regime == "strong":
+        return [value for value in couplings if value >= float(plot["strong_min_g4"])]
+    if regime == "weak":
+        return [value for value in couplings if value < float(plot["weak_max_g4"])]
+    raise ValueError("regime must be either 'strong' or 'weak'")
 
-colors = {
-    0.0: "blue",
-    0.5: "green",
-    1.0: "red",
-    2.0: "purple",
-    5.0: "gray",
-    10.0: "cyan",
-    20.0: "brown",
-    40.0: "crimson"
-}
 
-PLOT_CONDITIONS = {
-    "strong": lambda G: G >= 0.5,
-    "weak": lambda G: G < 10
-}
+def _compute_theory(
+    config: dict,
+    couplings: list[float],
+    regime: str,
+    gamma: float | None = None,
+) -> dict[str, np.ndarray]:
+    lattice = config["lattice"]
+    plot = config["plot"]
+    dimension = int(lattice["dimension"])
+    alpha = float(lattice["alpha"])
+    gamma = float(lattice["gammas"][0] if gamma is None else gamma)
+    momenta = np.array(
+        [[p] + [0.0] * (dimension - 1) for p in np.linspace(-np.pi, np.pi, int(plot["momentum_points"]))]
+    )
 
-PLOT_REGIME = "strong"  # place weak or strong mode comparison here
+    theory_seed = plot.get("theory_seed")
+    if theory_seed is not None:
+        np.random.seed(int(theory_seed))
 
-theory_values_filename = f"theory_2_point_{d}_{PLOT_REGIME}.npy"
-
-plt.figure(figsize=(10, 8))
-
-G_s = sorted(two_point_num["g^4"].unique())
-used_G_s = []
-gfs = []
-
-print(f"Starting computation in {PLOT_REGIME} regime for couplings: {[G for G in G_s if PLOT_CONDITIONS[PLOT_REGIME](G)]}")
-
-# рассчитываем и строим теоретические значения
-if os.path.exists(theory_values_filename):
-    gf = np.load(theory_values_filename)
-else:
-    for G in G_s:
-        if not PLOT_CONDITIONS[PLOT_REGIME](G):
-            continue
-        gf = []
-        g = np.power(G, 0.25)
-
-        for xi in tqdm(momenta_grid):
-            if PLOT_REGIME == "weak":
-                gf.append(G_xi_w(alpha=alpha, gamma=gamma, xi=xi)**2 *
-                          two_point_correlator_amputated_w(alpha=alpha, gamma=gamma, xi=xi, d=d, g=g))
-            elif PLOT_REGIME == "strong":
-                gf.append( G_xi_w(alpha=alpha, gamma=gamma, xi=xi) -
-                           G_xi_s(alpha=alpha, gamma=gamma, xi=xi, g=g)**2 * G_xi_w(alpha=alpha, gamma=gamma, xi=xi)**2 *
-                           two_point_correlator_amputated_s(alpha=alpha, gamma=gamma, xi=xi, d=d, g=g))
+    values = []
+    for coupling in tqdm(couplings, desc=f"{regime} theory couplings"):
+        g = float(np.power(coupling, 0.25))
+        curve = []
+        for momentum in tqdm(momenta, desc=f"g4={coupling}", leave=False):
+            if regime == "weak":
+                value = G_xi_w(alpha=alpha, gamma=gamma, xi=momentum) ** 2 * (
+                    two_point_correlator_amputated_w(
+                        alpha=alpha,
+                        gamma=gamma,
+                        xi=momentum,
+                        d=dimension,
+                        g=g,
+                    )
+                )
             else:
-                print(f"Incorrect plot comparison regime: {PLOT_REGIME}. Chose one of 'strong' or 'weak'")
+                value = G_xi_w(alpha=alpha, gamma=gamma, xi=momentum) - (
+                    G_xi_s(alpha=alpha, gamma=gamma, xi=momentum, g=g) ** 2
+                    * G_xi_w(alpha=alpha, gamma=gamma, xi=momentum) ** 2
+                    * two_point_correlator_amputated_s(
+                        alpha=alpha,
+                        gamma=gamma,
+                        xi=momentum,
+                        d=dimension,
+                        g=g,
+                    )
+                )
+            curve.append(value)
+        values.append(np.asarray(curve))
 
-        gf = np.array(gf)
-        gfs.append(gf)
-        plt.plot(momenta_grid.T[0], gf.T[0], label='_nolegend_', color=colors[G], alpha=0.5,)
+    return {
+        "couplings": np.asarray(couplings, dtype=float),
+        "momenta": momenta[:, 0],
+        "values": np.asarray(values),
+    }
 
-    gfs = np.array(gfs)
-    np.save(f"theory_2_point_{d}_{PLOT_REGIME}", gfs)
 
-# строим экспериментальные значения
-for G in G_s:
-    if not PLOT_CONDITIONS[PLOT_REGIME](G):
-        continue
+def _theory_curves(
+    config: dict,
+    couplings: list[float],
+    regime: str,
+    recompute: bool = False,
+    gamma: float | None = None,
+) -> dict[str, np.ndarray]:
+    lattice = config["lattice"]
+    plot = config["plot"]
+    selected_gamma = float(lattice["gammas"][0] if gamma is None else gamma)
+    payload = {
+        "kind": "two_point",
+        "regime": regime,
+        "dimension": int(lattice["dimension"]),
+        "alpha": float(lattice["alpha"]),
+        "gamma": selected_gamma,
+        "couplings": couplings,
+        "momentum_points": int(plot["momentum_points"]),
+        "theory_seed": plot.get("theory_seed"),
+    }
+    cache_directory = project_path(config["paths"]["theory_cache"])
+    cache_directory.mkdir(parents=True, exist_ok=True)
+    cache_path = cache_directory / f"two_point_{cache_key(payload)}.npz"
 
-    used_G_s.append(G)
+    if cache_path.is_file() and not recompute:
+        LOGGER.info("Loading analytical curves from %s", cache_path)
+        with np.load(cache_path) as cached:
+            return {name: cached[name] for name in cached.files}
 
-    res = two_point_num.where(two_point_num["g^4"] == G)
-    corr_f_mom = res["D(p)"].values
-    errors = res["error"].values
-    p_s = res["p"].values
-    p_s = [p if p < np.pi else p - 2 * np.pi for p in p_s]
+    result = _compute_theory(config, couplings, regime, gamma=selected_gamma)
+    np.savez_compressed(cache_path, **result)
+    LOGGER.info("Cached analytical curves in %s", cache_path)
+    return result
 
-    plt.errorbar(p_s, corr_f_mom, yerr=errors, fmt='o', label='_nolegend_', markersize=2.5, color=colors[G])
 
-legend_lines = [Line2D([0], [0], color=colors[G], marker='o', linestyle='-', label=rf'$g^4={G}$') for G in used_G_s]
+def run(
+    config: dict,
+    regime: str,
+    data_path: str | None = None,
+    show: bool = False,
+    recompute_theory: bool = False,
+    gamma: float | None = None,
+) -> str:
+    require_keys(config, ["lattice", "paths", "plot"], "root")
+    numerical_path = project_path(data_path or config["paths"]["two_point"])
+    if not numerical_path.is_file():
+        raise FileNotFoundError(
+            f"Two-point data not found: {numerical_path}. "
+            "Run hmc_multiprocessing_immediate_calculation.py first."
+        )
+    numerical = read_csv(numerical_path)
+    selected_gamma = float(config["lattice"]["gammas"][0] if gamma is None else gamma)
+    if "gamma" in numerical.columns:
+        numerical = numerical[np.isclose(numerical["gamma"].astype(float), selected_gamma)]
+    if numerical.empty:
+        raise ValueError(f"No two-point rows found for gamma={selected_gamma}")
+    required_columns = {"g^4", "D(p)", "error", "p"}
+    missing = sorted(required_columns.difference(numerical.columns))
+    if missing:
+        raise ValueError(f"Two-point data is missing columns: {', '.join(missing)}")
 
-plt.xlabel(r"$p$", fontsize=20)
-plt.ylabel(r"$G_g(p)$", fontsize=20, rotation=0, labelpad=30)
+    all_couplings = sorted(float(value) for value in numerical["g^4"].dropna().unique())
+    couplings = _selected_couplings(all_couplings, config, regime)
+    if not couplings:
+        raise ValueError(f"No numerical couplings satisfy the '{regime}' plotting condition")
+    theory = _theory_curves(
+        config,
+        couplings,
+        regime,
+        recompute=recompute_theory,
+        gamma=selected_gamma,
+    )
 
-plt.xticks(fontsize=14)
-plt.yticks(fontsize=14)
+    figure, axis = plt.subplots(figsize=(10, 8))
+    colormap = plt.get_cmap("tab10")
+    colors = {coupling: colormap(index % 10) for index, coupling in enumerate(couplings)}
 
-plt.legend(loc='upper left', shadow=True, fontsize='x-large', handles=legend_lines)
-plt.title(f"Two-point function comparison ({PLOT_REGIME} coupling)", fontsize=23)
-plt.grid()
-plt.savefig(f"immediate_calc/two_point_comparison_{PLOT_REGIME}_{d}.png")
+    for index, coupling in enumerate(theory["couplings"]):
+        axis.plot(
+            theory["momenta"],
+            theory["values"][index].T[0],
+            color=colors[float(coupling)],
+            alpha=0.65,
+        )
 
-plt.show()
+    for coupling in couplings:
+        subset = numerical[numerical["g^4"] == coupling].dropna(subset=["D(p)", "error", "p"])
+        subset = subset.sort_values("p")
+        momenta = subset["p"].to_numpy(dtype=float)
+        momenta = np.where(momenta < np.pi, momenta, momenta - 2 * np.pi)
+        order = np.argsort(momenta)
+        axis.errorbar(
+            momenta[order],
+            subset["D(p)"].to_numpy(dtype=float)[order],
+            yerr=subset["error"].to_numpy(dtype=float)[order],
+            fmt="o",
+            markersize=3,
+            color=colors[coupling],
+        )
+
+    legend_lines = [
+        Line2D([0], [0], color=colors[coupling], marker="o", linestyle="-", label=rf"$g^4={coupling}$")
+        for coupling in couplings
+    ]
+    axis.set_xlabel(r"$p$", fontsize=20)
+    axis.set_ylabel(r"$D(p)$", fontsize=20, rotation=0, labelpad=30)
+    axis.tick_params(axis="both", labelsize=14)
+    axis.legend(loc="upper left", shadow=True, fontsize="large", handles=legend_lines)
+    axis.set_title(f"Two-point function: {regime}-coupling comparison", fontsize=20)
+    axis.grid()
+    figure.tight_layout()
+
+    dimension = int(config["lattice"]["dimension"])
+    output_directory = project_path(config["paths"]["figures"])
+    output_directory.mkdir(parents=True, exist_ok=True)
+    output_path = output_directory / f"two_point_{regime}_d{dimension}.png"
+    figure.savefig(output_path, dpi=200, bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(figure)
+    LOGGER.info("Saved figure to %s", output_path)
+    return str(output_path)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Plot numerical and analytical two-point functions.")
+    parser.add_argument("--config", default="configs/two_point.json", help="JSON configuration file")
+    parser.add_argument("--regime", choices=["weak", "strong"], default="strong")
+    parser.add_argument("--data", help="Override the numerical two-point CSV from the configuration")
+    parser.add_argument("--gamma", type=float, help="Gamma value to plot; defaults to the first configured value")
+    parser.add_argument("--show", action="store_true", help="Open the figure after saving it")
+    parser.add_argument(
+        "--recompute-theory",
+        action="store_true",
+        help="Ignore a compatible analytical cache and recompute the curve",
+    )
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    configure_logging(args.verbose)
+    config, config_path = load_config(args.config)
+    LOGGER.info("Using configuration %s", config_path)
+    run(
+        config,
+        regime=args.regime,
+        data_path=args.data,
+        show=args.show,
+        recompute_theory=args.recompute_theory,
+        gamma=args.gamma,
+    )
+
+
+if __name__ == "__main__":
+    main()

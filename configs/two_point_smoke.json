@@ -1,0 +1,33 @@
+{
+  "lattice": {
+    "size": 4,
+    "dimension": 2,
+    "alpha": 1.0,
+    "gammas": [
+      1.0
+    ]
+  },
+  "couplings_g4": [
+    0.0,
+    1.0
+  ],
+  "hmc": {
+    "warmup_steps": 10,
+    "production_steps": 250,
+    "sample_every": 2,
+    "base_seed": 1729,
+    "base_leapfrog_steps": 100
+  },
+  "correlator_backend": "optimized",
+  "paths": {
+    "two_point": "results/generated/smoke/two_point/two_point_d2.csv",
+    "figures": "figures/generated/smoke/two_point",
+    "theory_cache": "cache/theory"
+  },
+  "plot": {
+    "momentum_points": 8,
+    "strong_min_g4": 0.5,
+    "weak_max_g4": 10.0,
+    "theory_seed": 1729
+  }
+}

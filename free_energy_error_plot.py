@@ -1,48 +1,98 @@
-import pandas as pd
+"""Plot numerical quadrature error and the strong-coupling truncation estimate."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+
 import matplotlib.pyplot as plt
 import numpy as np
-from tqdm import tqdm
-from pathlib import Path
-from analytical_expressions import f_s, f_w
 
-alpha = 1.  # \alpha coefficient of L operator 
-gamma = 1.  # \beta coefficient of L operator 
-d = 3       # dimension of a lattice
+from free_energy_comparison import _theory_curves
+from simulation_utils import configure_logging, load_config, project_path, read_csv
 
-DATA_DIRECTORY = Path("./data_enhanced/")   # directory for data saving 
+LOGGER = logging.getLogger(__name__)
 
-f_num = pd.read_csv(DATA_DIRECTORY / f'free_energy_{d}.csv')
 
-g_grid_w = np.linspace(0.0, 2.5, 150)
-G_grid_w = g_grid_w ** 4
+def run(
+    config: dict,
+    data_path: str | None = None,
+    show: bool = False,
+    recompute_theory: bool = False,
+    gamma: float | None = None,
+) -> str:
+    numerical_path = project_path(data_path or config["paths"]["free_energy"])
+    if not numerical_path.is_file():
+        raise FileNotFoundError(
+            f"Free-energy data not found: {numerical_path}. Run files_to_free_energy_num.py first."
+        )
+    numerical = read_csv(numerical_path)
+    selected_gamma = float(config["lattice"]["gammas"][0] if gamma is None else gamma)
+    if "gamma" in numerical.columns:
+        numerical = numerical[np.isclose(numerical["gamma"].astype(float), selected_gamma)]
+    if numerical.empty:
+        raise ValueError(f"No free-energy rows found for gamma={selected_gamma}")
+    error_column = "quadrature_error" if "quadrature_error" in numerical.columns else "f_error"
+    theory = _theory_curves(config, recompute=recompute_theory, gamma=selected_gamma)
 
-#G_grid_w = np.linspace(0.0, 16., 100)
-#g_grid_w = G_grid_w ** 0.25
+    figure, axis = plt.subplots(figsize=(10, 8))
+    axis.plot(
+        theory["strong_g4"],
+        np.abs(theory["strong_values"][1]),
+        label="Strong-coupling truncation estimate",
+    )
+    axis.scatter(numerical["g^4"], numerical[error_column], label="Numerical quadrature error", color="red")
+    axis.set_xlabel(r"$g^4$", fontsize=20)
+    axis.set_ylabel("absolute error", fontsize=16)
+    axis.tick_params(axis="both", labelsize=14)
+    axis.set_xlim(
+        max(0.0, float(config["plot"]["strong_g_min"]) ** 4),
+        float(config["plot"]["x_g4_max"]),
+    )
+    axis.legend(loc="upper left", shadow=True, fontsize="large")
+    axis.grid()
+    figure.tight_layout()
 
-g_grid_s = np.linspace(1, 2.8, 20)
-G_grid_s = g_grid_s ** 4
+    dimension = int(config["lattice"]["dimension"])
+    output_directory = project_path(config["paths"]["figures"])
+    output_directory.mkdir(parents=True, exist_ok=True)
+    output_path = output_directory / f"free_energy_errors_d{dimension}.png"
+    figure.savefig(output_path, dpi=200, bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(figure)
+    LOGGER.info("Saved figure to %s", output_path)
+    return str(output_path)
 
-#f_w_grid = np.array([f_w(alpha, gamma, g, d) for g in tqdm(g_grid_w)]).T
-f_s_grid = np.array([f_s(alpha, gamma, g, d) for g in tqdm(g_grid_s)]).T
 
-print(f_s_grid)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Plot free-energy error estimates.")
+    parser.add_argument("--config", default="configs/free_energy.json", help="JSON configuration file")
+    parser.add_argument("--data", help="Override the numerical free-energy CSV from the configuration")
+    parser.add_argument("--gamma", type=float, help="Gamma value to plot; defaults to the first configured value")
+    parser.add_argument("--show", action="store_true", help="Open the figure after saving it")
+    parser.add_argument(
+        "--recompute-theory",
+        action="store_true",
+        help="Ignore a compatible analytical cache and recompute the curves",
+    )
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    return parser.parse_args()
 
-plt.figure(figsize=(10,8))
 
-plt.plot(G_grid_s, np.abs(f_s_grid[1]), label='Strong Coupling series')
-plt.scatter(f_num["g^4"], f_num["f_error"], label='Numerical simulation', color="red")
+def main() -> None:
+    args = parse_args()
+    configure_logging(args.verbose)
+    config, config_path = load_config(args.config)
+    LOGGER.info("Using configuration %s", config_path)
+    run(
+        config,
+        data_path=args.data,
+        show=args.show,
+        recompute_theory=args.recompute_theory,
+        gamma=args.gamma,
+    )
 
-plt.xlabel(r"$g^4$", fontsize=20)
-plt.ylabel(r"$f$", fontsize=20, rotation=0)
 
-plt.xticks(fontsize=14)
-plt.yticks(fontsize=14)
-
-plt.xlim((1., 50.))
-#plt.ylim((0., .120))
-plt.legend(loc='upper left', shadow=True, fontsize='x-large')
-plt.grid()
-plt.savefig(f"img/err_f(g)_{d}.png")
-
-plt.show()
-
+if __name__ == "__main__":
+    main()

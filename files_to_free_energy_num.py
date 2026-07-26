@@ -1,64 +1,116 @@
-import numpy
+"""Integrate the measured <phi^4> observable to obtain free energy per site."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+
 import numpy as np
-import os
-import re
 import pandas as pd
-from scipy.interpolate import interp1d
 from scipy.integrate import quad
-import matplotlib.pyplot as plt
-from pathlib import Path
+from scipy.interpolate import interp1d
 
-d = 2                                       # dimension of a lattice
-DATA_DIRECTORY = Path("./data_enhanced/")   # directory for data saving 
+from simulation_utils import (
+    atomic_write_csv,
+    configure_logging,
+    load_config,
+    project_path,
+    read_csv,
+    require_keys,
+)
 
-results_list = []
-
-for entry in os.scandir(DATA_DIRECTORY):
-    search_res = re.search(rf"{d}_(.*)_(.*)\.npy", entry.name)
-    if search_res:
-        print(f"Processing file {entry.name}...")
-        groups = search_res.groups()
-        arr = np.load(entry.path)
-        av_4_point = numpy.mean(arr ** 4)
-        results_list.append({"g^4": float(groups[0]), "gamma": float(groups[1]), "<phi^4>": av_4_point})
-
-results = pd.DataFrame(results_list, columns=["g^4", "gamma", "<phi^4>"])
-
-print(results.head())
-print(len(results))
-
-f_derivatives = []
-
-f_results_list = []
-
-G_max = np.max(results["g^4"])
-
-for gamma in set(results["gamma"]):
-    res_gamma = results.query(f"gamma=={gamma}")
-    f_derivative = interp1d(res_gamma["g^4"], res_gamma["<phi^4>"], kind='cubic', fill_value="extrapolate")
-    print(f_derivative(np.linspace(0., G_max, 50)))
-
-    def integrand(x):
-        return f_derivative(x) # / 6 * (x ** 3)
-
-    for G in np.sort(res_gamma["g^4"]):
-        res_tuple = quad(integrand, 0., G)
-        f_results_list.append({"f": res_tuple[0], "f_error": res_tuple[1], "g^4": G, "gamma": gamma})
-
-f_results = pd.DataFrame(f_results_list, columns=["g^4", "gamma", "f", "f_error"])
-
-print(f_results.query("gamma==1").head())
-print(len(f_results))
-
-f_res_1 = f_results.query("gamma==1")
-f_res_1["f"] = f_res_1["f"] / 24
-
-plt.figure(figsize=(10,8))
-print(list(np.power(f_res_1["g^4"], 0.25)))
-plt.plot(f_res_1["g^4"], f_res_1["f"])
+LOGGER = logging.getLogger(__name__)
 
 
-plt.savefig("img/f(g).png")
-plt.show()
+def compute_free_energy(observables: pd.DataFrame, interpolation: str = "cubic") -> pd.DataFrame:
+    """Apply the same thermodynamic-integration formula as the original script."""
+    required_columns = {"g^4", "gamma", "<phi^4>"}
+    missing = sorted(required_columns.difference(observables.columns))
+    if missing:
+        raise ValueError(f"Observables file is missing columns: {', '.join(missing)}")
 
-f_res_1.to_csv(DATA_DIRECTORY / "free_energy_{d}.csv")
+    rows: list[dict[str, float]] = []
+    for gamma, gamma_data in observables.groupby("gamma", sort=True):
+        gamma_data = (
+            gamma_data[["g^4", "<phi^4>"]]
+            .drop_duplicates(subset=["g^4"], keep="last")
+            .sort_values("g^4")
+        )
+        couplings = gamma_data["g^4"].to_numpy(dtype=float)
+        phi4 = gamma_data["<phi^4>"].to_numpy(dtype=float)
+
+        minimum_points = 4 if interpolation == "cubic" else 2
+        if couplings.size < minimum_points:
+            raise ValueError(
+                f"Interpolation '{interpolation}' requires at least {minimum_points} coupling points; "
+                f"got {couplings.size} for gamma={gamma}."
+            )
+        if np.any(np.diff(couplings) <= 0):
+            raise ValueError(f"Couplings must be strictly increasing for gamma={gamma}")
+        if couplings[0] > 0:
+            LOGGER.warning(
+                "The smallest coupling for gamma=%s is %s; integration to zero uses extrapolation.",
+                gamma,
+                couplings[0],
+            )
+
+        derivative = interp1d(
+            couplings,
+            phi4,
+            kind=interpolation,
+            fill_value="extrapolate",
+            assume_sorted=True,
+        )
+
+        for coupling in couplings:
+            integral, quadrature_error = quad(lambda value: float(derivative(value)), 0.0, coupling)
+            rows.append(
+                {
+                    "g^4": float(coupling),
+                    "gamma": float(gamma),
+                    "f": float(integral / 24.0),
+                    # Keep f_error for compatibility with older plotting scripts.
+                    "f_error": float(quadrature_error / 24.0),
+                    "quadrature_error": float(quadrature_error / 24.0),
+                }
+            )
+
+    return pd.DataFrame(rows).sort_values(["gamma", "g^4"]).reset_index(drop=True)
+
+
+def run(config: dict) -> pd.DataFrame:
+    require_keys(config, ["integration", "paths"], "root")
+    require_keys(config["integration"], ["interpolation"], "integration")
+    require_keys(config["paths"], ["observables", "free_energy"], "paths")
+
+    observables_path = project_path(config["paths"]["observables"])
+    if not observables_path.is_file():
+        raise FileNotFoundError(
+            f"Free-energy observables not found: {observables_path}. "
+            "Run hmc_multiprocessing.py first."
+        )
+
+    observables = read_csv(observables_path)
+    results = compute_free_energy(observables, config["integration"]["interpolation"])
+    output_path = atomic_write_csv(results, config["paths"]["free_energy"])
+    LOGGER.info("Wrote free-energy values to %s", output_path)
+    return results
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Integrate <phi^4> to obtain free energy per site.")
+    parser.add_argument("--config", default="configs/free_energy.json", help="JSON configuration file")
+    parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    configure_logging(args.verbose)
+    config, config_path = load_config(args.config)
+    LOGGER.info("Using configuration %s", config_path)
+    run(config)
+
+
+if __name__ == "__main__":
+    main()

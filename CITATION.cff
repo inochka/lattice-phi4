@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the accompanying article."
+title: "Lattice Scalar Field Theory Simulation"
+type: software
+authors:
+  - family-names: Ignatyuk
+    given-names: Nikita A.
+  - family-names: Skliannyi
+    given-names: Daniel
+preferred-citation:
+  type: article
+  title: "Strong-Weak Coupling Duality in Scalar Lattice QFT with Application to Strong Coupling Decompositions"
+  authors:
+    - family-names: Ignatyuk
+      given-names: Nikita A.
+    - family-names: Skliannyi
+      given-names: Daniel
+  year: 2022
+  doi: 10.48550/arXiv.2207.11503

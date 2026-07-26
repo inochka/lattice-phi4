@@ -1,0 +1,46 @@
+{
+  "lattice": {
+    "size": 4,
+    "dimension": 2,
+    "alpha": 1.0,
+    "gammas": [
+      1.0
+    ]
+  },
+  "couplings_g4": [
+    0.0,
+    0.5,
+    1.0,
+    2.0
+  ],
+  "hmc": {
+    "warmup_steps": 10,
+    "production_steps": 40,
+    "sample_every": 2,
+    "processes": 1,
+    "base_seed": 1729,
+    "base_leapfrog_steps": 100
+  },
+  "integration": {
+    "interpolation": "cubic"
+  },
+  "paths": {
+    "observables": "results/generated/smoke/free_energy/phi4_d2.csv",
+    "free_energy": "results/generated/smoke/free_energy/free_energy_d2.csv",
+    "figures": "figures/generated/smoke/free_energy",
+    "theory_cache": "cache/theory"
+  },
+  "plot": {
+    "weak_g_min": 0.0,
+    "weak_g_max": 1.3,
+    "weak_points": 8,
+    "strong_g_min": 0.8,
+    "strong_g_max": 1.3,
+    "strong_points": 4,
+    "x_g4_min": 0.0,
+    "x_g4_max": 2.0,
+    "y_min": 0.0,
+    "y_max": 0.2,
+    "theory_seed": 1729
+  }
+}
