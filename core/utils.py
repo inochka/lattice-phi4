@@ -1,15 +1,18 @@
-import numpy as np
-from tqdm import tqdm
-#import numba
-from numba import njit
-from itertools import product
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
+from itertools import product
+from multiprocessing import Pool, cpu_count, shared_memory, Lock, Manager
+
+import numpy as np
+# import numba
+from joblib import Parallel, delayed, Memory
+# from numba import njit
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-numba_logger = logging.getLogger('numba')
-numba_logger.setLevel(logging.INFO)
+# numba_logger = logging.getLogger('numba')
+# numba_logger.setLevel(logging.INFO)
 
 
 def cross_validation_mean_error_np(samples: np.ndarray, k: int = 100):
@@ -81,59 +84,84 @@ def get_corr_func_coord(cfgs: np.ndarray):
     return np.mean(shifted_cf, axis=1)
 
 
-def get_corr_func_mom(cfgs: np.ndarray, p: np.ndarray):
-    correlator = []
+
+def get_corr_func_mom_parallel(cfgs: np.ndarray, p: np.ndarray):
     d = cfgs.ndim - 1
+    L = cfgs.shape[1]
+    samples_num = cfgs.shape[0] * L ** (d - 1)
+    assert len(p) == L
     spatial_axis = tuple(np.arange(1, d + 1))
 
-    shifts_coords = np.meshgrid(*[np.arange(0, cfgs.shape[1])] * d, indexing="ij")
-    shifts_coords = np.array([coord.flatten() for coord in shifts_coords]).T
-    for shift in tqdm(shifts_coords):
-        #corr_func.append(np.roll(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=0), -shift,
-        #                         axis=(spatial_axis - 1)))
-        correlator.append(np.mean(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=0)))
-        #correlator.append(np.mean(cfgs * np.roll(cfgs, shift, axis=spatial_axis), axis=spatial_axis))
+    shifts_coords = list(product(*[range(L)] * d))
 
-    correlator = np.array(correlator)
+    # Создаем разделяемую память для cfgs
+    shm_cfgs = shared_memory.SharedMemory(create=True, size=cfgs.nbytes)
+    shared_cfgs = np.ndarray(cfgs.shape, dtype=cfgs.dtype, buffer=shm_cfgs.buf)
+    shared_cfgs[:] = cfgs[:]
 
-    #return np.sum(correlator * np.cos(p @ shifts_coords.T), axis=1)
+    # Создаем разделяемую память для corrs
+    corrs_shape = (samples_num, L)
+    shm_corrs = shared_memory.SharedMemory(create=True, size=np.zeros(corrs_shape).nbytes)
+    shared_corrs = np.ndarray(corrs_shape, dtype=np.float64, buffer=shm_corrs.buf)
+    shared_corrs.fill(0)
 
-    corrs = np.sum(np.expand_dims(correlator, axis=0) * np.expand_dims(np.cos(p @ shifts_coords.T), axis=2),
-                   axis=1)
+    manager = Manager()
+    lock = manager.Lock()
 
-    return np.array([jackknife(sample) for sample in corrs])
+    def process_chunk(chunk, cfgs_shape, corrs_shape, shm_cfgs_name, shm_corrs_name):
+        """Обрабатывает чанк сдвигов и обновляет corrs."""
+        # Подключаемся к разделяемой памятиx
+        existing_shm_cfgs = shared_memory.SharedMemory(name=shm_cfgs_name)
+        existing_shm_corrs = shared_memory.SharedMemory(name=shm_corrs_name)
 
+        local_cfgs = np.ndarray(cfgs_shape, dtype=np.float64, buffer=existing_shm_cfgs.buf)
+        local_corrs = np.ndarray(corrs_shape, dtype=np.float64, buffer=existing_shm_corrs.buf)
 
-@njit
-def process_shifts(cfgs, p, samples_num, spatial_axis, d, L):
-    corrs = np.zeros((samples_num, L))
+        # Локальная сумма для текущего чанка
+        local_chunk_corrs = np.zeros(corrs_shape)
 
-    # Перебираем возможные сдвиги по каждому измерению без использования product.
-    for shift_indices in range(L ** d):
-        if shift_indices % 100 == 0:
-            print(shift_indices)
-        # Инициализируем массив сдвигов как int
-        shift = np.empty(d, dtype=np.int64)
-        index = shift_indices
-        for i in range(d):
-            shift[i] = index % L
-            index //= L
+        for shift in chunk:
+            cos_values = np.cos(p @ np.array(shift))
+            cos_values = cos_values.reshape((1,) * (local_cfgs.ndim - 1) + (-1,))
+            local_chunk_corrs += (local_cfgs * np.roll(local_cfgs, shift, axis=spatial_axis) * cos_values).reshape(-1, L)
 
-        # Преобразуем shift в float64 непосредственно перед операцией умножения
-        cos_values = np.cos(p @ shift.astype(np.float64))
+        # Синхронно обновляем общий массив corrs
+        with lock:
+            local_corrs += local_chunk_corrs
+        # Закрываем память
+        existing_shm_cfgs.close()
+        existing_shm_corrs.close()
 
-        # Применяем np.roll последовательно по каждой оси
-        rolled_cfgs = cfgs.copy()
-        for i in range(d):
-            rolled_cfgs = np.roll(rolled_cfgs, shift[i], axis=spatial_axis[i])
+    # Разбиваем сдвиги на чанки
+    num_chunks = 100
+    chunk_size = len(shifts_coords) // num_chunks + 1
+    chunks = [shifts_coords[i:i + chunk_size] for i in range(0, len(shifts_coords), chunk_size)]
 
-        # Обновляем corrs, учитывая сдвиг, косинус и векторизацию
-        corrs += (rolled_cfgs * np.expand_dims(cos_values, axis=tuple(np.arange(0, d + 1)))).reshape(-1, L)
+    # Параллельная обработка чанков
+    Parallel(n_jobs=6, backend="loky")(
+        delayed(process_chunk)(
+            chunk,
+            cfgs.shape,
+            corrs_shape,
+            shm_cfgs.name,
+            shm_corrs.name,
+        )
+        for chunk in tqdm(chunks)
+    )
 
-    return corrs
+    # Закрываем и удаляем разделяемую память
+    shm_cfgs.close()
+    shm_cfgs.unlink()
 
-#@jit(nopython=True, parallel=True, fastmath=True)
+    # Получаем итоговый corrs из общей памяти
+    corrs = np.array(np.ndarray(corrs_shape, dtype=np.float64, buffer=shm_corrs.buf).T)
 
+    shm_corrs.close()
+    shm_corrs.unlink()
+
+    # Расчет средних и ошибок через кросс-валидацию
+    logger.info(f"Calculating means and error using cross-validation...")
+    return np.array([cross_validation_mean_error_np(sample) for sample in corrs])
 
 def get_corr_func_mom_optimized(cfgs: np.ndarray, p: np.ndarray):
     d = cfgs.ndim - 1
@@ -142,29 +170,31 @@ def get_corr_func_mom_optimized(cfgs: np.ndarray, p: np.ndarray):
     assert len(p) == L
     spatial_axis = tuple(np.arange(1, d + 1))
 
-    # Генерируем сдвиги на лету с помощью product и tqdm
-    shifts_coords = product(*[range(L)] * d) #, total=L ** d)
+    shifts_coords = product(*[range(L)] * d)  #, total=L ** d)
     corrs = np.zeros((samples_num, L))
     ## TODO: брать одномерный массив shifts??
-    for i, shift in tqdm(enumerate(shifts_coords), total=L ** d):
+    for shift in tqdm(shifts_coords, total=L ** d):
+        # tODO: проверить, что тут все хорошо и согласовано по размерностям
         cos_values = np.cos(p @ np.array(shift))
         cos_values = cos_values.reshape((1,) * (cfgs.ndim - 1) + (-1,))
         # готовим массив, чтобы потом просуммировать по сдвигам. Для одновременного учета всех импульсов используем векторизацию
         # также используем, что импульсов имеется одномерный массив, и все остальные измерения (0+все, кроме последнего пространственного)
         # дают нам просто большее количество выборок
 
-        #rolled_cfgs = np.roll(cfgs, shift, axis=spatial_axis)
-        #mult_result = cfgs * rolled_cfgs
-        #mult_result *= cos_values
-        #corrs += mult_result.reshape(-1, L)''
-
         corrs += (cfgs * np.roll(cfgs, shift, axis=spatial_axis) * cos_values).reshape(-1, L)
 
-    logger.info(f"Taking sum over all shifts...")  # останутся только разные выборки (N * L^d) + импульсы
+    # останутся только разные выборки (N * L^d) + импульсы
     corrs = corrs.T
+    # TODO: сразу сохранять фолды, а не весь массив, чтобы память поэкономить? пускай даже на 1000 элементов
+    # TODO: через разделенную память разбить сдвиги на чанки и разделить между 2-3 процессорами
     logger.info(f"Calculating means and error using cross validation...")
     return np.array([cross_validation_mean_error_np(sample) for sample in corrs])
-    #return np.array([jackknife(sample) for sample in grouped_data])
+
+
+def compute_corr_for_shift(cfgs, shift_0, shift_1, p, L, d, spatial_axis):
+    shift = np.concatenate((shift_0, [shift_1]))
+    cos_values = (np.cos(p @ np.array(shift))).reshape((1,) * (cfgs.ndim - 1) + (-1,))
+    return (cfgs * np.roll(cfgs, shift, axis=spatial_axis) * cos_values).reshape(-1, L)
 
 
 

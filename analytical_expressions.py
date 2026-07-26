@@ -1,10 +1,11 @@
 import numpy as np
-import scipy as sp
 from math import gamma as Gamma
 from scipy.integrate import nquad
 from core.utils import montecarlo_integrate
 
-n = 2.
+n = 2.  # 2 * n is a  power of interaction
+
+# coefficients a dual action interaction expantion
 
 a = Gamma(3. / 2 / n) * np.power(Gamma(2 * n + 1), 1 / n) / Gamma(1 / 2 / n)
 
@@ -19,27 +20,37 @@ dd = 288.362
 
 
 def G_xi_w(alpha: float, gamma: float, xi: np.ndarray | list) -> np.ndarray:
-    #axis = xi.ndim
+    """ 
+        Weak expansion free Green's function 
+    """
     return 1. / (4 * alpha * np.sum(np.sin(xi / 2) ** 2, axis=0) + gamma)
 
 def G_xi_s(alpha: float, gamma: float, g: float, xi: np.ndarray) -> np.ndarray:
-    #axis = xi.ndim
+    """ 
+        Strong expansion free Green's function 
+    """
     s = np.sum(np.sin(xi / 2) ** 2, axis=0)
     return (g ** 2 / a) * (4 * alpha * s + gamma) / (4 * alpha * s + gamma + g ** 2 / a)
 
 
 def G_0_w(alpha: float, gamma: float, d: int) -> np.ndarray:
-    #return np.array(montecarlo_integrate(lambda xi: G_xi_w(alpha, gamma, np.array(xi)),
-    #                                     np.array([[0, 2 * np.pi] for _ in range(d)])))
+    """ 
+        Weak expansion one-loop integral G_0
+    """
     return np.array(nquad(lambda *xi: G_xi_w(alpha, gamma, np.array(xi)), [[0, 2 * np.pi] for _ in range(d)]))
 
 
 def G_0_s(alpha: float, gamma: float, g: float, d: int) -> np.ndarray:
-    #return np.array(montecarlo_integrate(lambda xi: G_xi_s(alpha, gamma, g, np.array(xi)),
-    #                                     np.array([[0, 2 * np.pi] for _ in range(d)])))
+    """ 
+        Strong expansion one-loop integral G_0
+    """
     return np.array(nquad(lambda *xi: G_xi_s(alpha, gamma, g, np.array(xi)), [[0, 2 * np.pi] for _ in range(d)]))
 
+
 def triple_product(G: callable, d, *args, **kwargs) -> float:
+    """
+        Shorthand nonation for product with momentum conservation with given (Green's) function G
+    """
     l1 = args[:d]
     l2 = args[d:2 * d]
     l3 = args[2 * d:3 * d]
@@ -48,6 +59,10 @@ def triple_product(G: callable, d, *args, **kwargs) -> float:
 
 
 def f_w(alpha: float, gamma: float, g: float, d: int) -> np.array:
+    """
+        Weak coupling expansion of free energy per site
+    """
+
     f1 = g ** 4 / 8. / (2 * np.pi) ** (2 * d) * G_0_w(alpha, gamma, d) ** 2
     #f_2_1 = (- g ** 8 / 16. / (2 * np.pi) ** (3 * d) * G_0_w(alpha, gamma, d) ** 2 *
     #         montecarlo_integrate(lambda xi: G_xi_w(alpha, gamma, np.array(xi))**2,
@@ -70,6 +85,9 @@ def f_w(alpha: float, gamma: float, g: float, d: int) -> np.array:
 
 
 def f_s(alpha: float, gamma: float, g: float, d: int) -> np.array:
+    """
+        Strong coupling expansion of free energy per site
+    """
     f_0, f_0_err = ( np.array([1., 0.]) * (0.5 * np.log(2 * np.pi) -
                                   np.log(Gamma(1. / 2 / n) * np.power(Gamma(2 * n + 1), 1. / 2 / n) / n)) + 0.5 / ((2 * np.pi) ** d) *
             np.array(
@@ -113,6 +131,10 @@ def f_s(alpha: float, gamma: float, g: float, d: int) -> np.array:
 
 
 def two_point_correlator_amputated_w(alpha: float, gamma: float, g: float, d: int, xi: np.array) -> np.array:
+    """
+        Weak coupling expansion of (amputated) two-poing function
+    """
+
     G_2_0 = np.array([1., 0.]) / G_xi_w(alpha, gamma, xi)
     G_2_1 = - 0.5 * (g ** 4) * G_0_w(alpha, gamma, d) / (2 * np.pi) ** d
     G_2_2_1 = 0.125 * (g ** 8) / ((2 * np.pi) ** (3 * d)) * (G_0_w(alpha, gamma, d) ** 2) * G_xi_w(alpha, gamma, xi)
@@ -131,6 +153,10 @@ def two_point_correlator_amputated_w(alpha: float, gamma: float, g: float, d: in
 
 
 def two_point_correlator_amputated_s(xi: np.array, alpha: float, gamma: float, g: float, d: int) -> np.array:
+    """
+        Strong coupling expansion of (amputated) two-poing function
+    """
+    
     G_2_0 = np.array([1., 0.]) / G_xi_s(alpha, gamma, g, xi)
     G_2_1 = - 0.5 * b / (g ** 4) * G_0_s(alpha, gamma, g, d) / (2 * np.pi) ** d
 

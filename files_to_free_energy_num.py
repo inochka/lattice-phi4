@@ -6,12 +6,14 @@ import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.integrate import quad
 import matplotlib.pyplot as plt
+from pathlib import Path
+
+d = 2                                       # dimension of a lattice
+DATA_DIRECTORY = Path("./data_enhanced/")   # directory for data saving 
 
 results_list = []
 
-d = 2
-
-for entry in os.scandir("./data"):
+for entry in os.scandir(DATA_DIRECTORY):
     search_res = re.search(rf"{d}_(.*)_(.*)\.npy", entry.name)
     if search_res:
         print(f"Processing file {entry.name}...")
@@ -59,4 +61,4 @@ plt.plot(f_res_1["g^4"], f_res_1["f"])
 plt.savefig("img/f(g).png")
 plt.show()
 
-f_res_1.to_csv(f"data/free_energy_{d}.csv")
+f_res_1.to_csv(DATA_DIRECTORY / "free_energy_{d}.csv")

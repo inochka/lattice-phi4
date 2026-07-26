@@ -2,14 +2,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
-from scipy.interpolate import interp1d
-from integrands import f_s, f_w
+from pathlib import Path
+from analytical_expressions import f_s, f_w
 
-alpha = 1.
-gamma = 1.
-d = 3
+alpha = 1.  # \alpha coefficient of L operator 
+gamma = 1.  # \beta coefficient of L operator 
+d = 3       # dimension of a lattice
 
-f_num = pd.read_csv(f'data/free_energy_{d}.csv')
+DATA_DIRECTORY = Path("./data_enhanced/")   # directory for data saving 
+
+f_num = pd.read_csv(DATA_DIRECTORY / f'free_energy_{d}.csv')
 
 g_grid_w = np.linspace(0.0, 2.5, 150)
 G_grid_w = g_grid_w ** 4

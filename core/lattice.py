@@ -1,6 +1,6 @@
 import numpy as np
 import copy
-from numba import njit
+# from numba import njit
 
 # TODO: почекать через cp, мб будет быстрее, чем np
 
@@ -61,9 +61,12 @@ class Lattice:
         На последнем шаге какой-то подгон с обновлением импульсов только на половинку, ну да ладно.
         """
 
+        n_steps = int(n_steps * np.sqrt(self.d / 2))
+
         dt = 1 / n_steps
         phi_0 = copy.deepcopy(self.phi)
         # TODO: проверить, что будет, если брать распределение по гауссу, как советуют, а не равномерное
+
         chi = np.random.randn(*self.shape)
 
         #chi = np.random.multivariate_normal(
