@@ -115,7 +115,7 @@ When `base_seed` is `null`, each task receives an independent seed from operatin
 
 ## Configuration
 
-The production and smoke configurations are stored in `configs/`:
+The production and smoke-test configurations are stored in `configs/`:
 
 ```text
 configs/
@@ -125,15 +125,143 @@ configs/
 └── two_point_smoke.json
 ```
 
-The main groups are:
+The production configurations contain the parameters used for the full numerical calculations. The smoke-test configurations use substantially smaller lattices and shorter Markov chains and are intended only to verify that the installation and complete pipeline work correctly.
 
-- `lattice`: lattice size $M$, dimension $d$, $\alpha$, and the list of $\gamma$ values;
-- `couplings_g4`: values of $g^4$ to simulate;
-- `hmc`: warm-up length, production length, sampling interval, base leapfrog-step count, process count where applicable, and base seed;
-- `paths`: input, output, figure, and analytical-cache locations;
-- `plot`: analytical grids and display ranges.
+All relative paths are resolved from the repository root.
 
-The production configuration values reproduce the constants that were previously embedded directly in the scripts.
+### Lattice parameters
+
+```json
+"lattice": {
+  "size": 8,
+  "dimension": 2,
+  "alpha": 1.0,
+  "gammas": [1.0]
+}
+```
+
+* `size`: number of lattice sites ($M$) along each spatial direction. The total number of sites is $N=M^d$.
+* `dimension`: lattice dimension ($d$).
+* `alpha`: coefficient of the lattice Laplacian in the quadratic part of the action:
+  $$
+  L=-\alpha\Delta+\gamma.
+  $$
+* `gammas`: values of the quadratic coefficient (\gamma). The pipeline performs an independent calculation for every value in this list.
+
+### Coupling constants
+
+```json
+"couplings_g4": [
+  0.0,
+  0.625,
+  1.25,
+  1.875,
+  2.5
+]
+```
+
+`couplings_g4` specifies the values of the quartic coupling ($g^4$) at which HMC simulations are performed.
+
+For the free-energy calculation, these values also form the numerical integration grid. A denser grid generally reduces the interpolation and integration error, while increasing the total simulation time.
+
+The values should be given in ascending order and should include $(g^4=0)$ when the free energy is obtained by integration from the free theory.
+
+### HMC parameters
+
+```json
+"hmc": {
+  "warmup_steps": 1000,
+  "production_steps": 10000,
+  "sample_every": 10,
+  "processes": 6,
+  "base_seed": null,
+  "base_leapfrog_steps": 100
+}
+```
+
+* `warmup_steps`: number of initial HMC trajectories discarded before measurements are collected. These trajectories allow the Markov chain to approach the target distribution.
+* `production_steps`: number of HMC trajectories generated after the warm-up stage.
+* `sample_every`: measurement interval in HMC trajectories. For example, a value of `10` means that an observable is recorded after every tenth production trajectory.
+* `processes`: maximum number of worker processes used to run independent parameter combinations in parallel. Increasing this value can reduce wall-clock time but also increases CPU and memory usage.
+* `base_seed`: base random seed used to derive independent seeds for individual simulations.
+
+  * An integer gives reproducible random-number streams.
+  * `null` requests non-deterministic seeds from the operating system.
+* `base_leapfrog_steps`: baseline number of leapfrog integration steps used by the HMC integrator. This parameter controls the numerical integration of the molecular-dynamics trajectory and should normally be changed only together with the corresponding HMC tuning and acceptance-rate checks.
+
+The approximate number of stored measurements per parameter combination is
+
+$$
+N_{\mathrm{samples}} \approx
+\frac{\texttt{production\_steps}}
+{\texttt{sample\_every}}
+$$
+
+Warm-up trajectories are not included in this number.
+
+### Free-energy integration
+
+```json
+"integration": {
+  "interpolation": "cubic"
+}
+```
+
+* `interpolation`: interpolation method applied to the simulated values of $ \left\langle \phi^4 \right\rangle$ before numerical integration over $(g^4)$.
+
+The production configuration uses cubic interpolation. Its accuracy depends on the density and placement of the values in `couplings_g4`, particularly in regions where the observable changes rapidly.
+
+### Paths
+
+```json
+"paths": {
+  "observables": "results/generated/free_energy/phi4_d2.csv",
+  "free_energy": "results/generated/free_energy/free_energy_d2.csv",
+  "figures": "figures/generated/free_energy",
+  "theory_cache": "cache/theory"
+}
+```
+
+* `observables`: CSV file containing the observables measured directly in the HMC simulations, together with their statistical uncertainties.
+* `free_energy`: CSV file containing the free energy obtained by numerical integration and the associated statistical and integration errors.
+* `figures`: directory in which generated plots are stored.
+* `theory_cache`: directory used to cache analytical curves whose evaluation is comparatively expensive.
+
+Generated numerical results, cached values, and figures are kept in separate directories so that the source code and configuration files remain unchanged during a simulation run.
+
+### Plotting parameters
+
+```json
+"plot": {
+  "weak_g_min": 0.0,
+  "weak_g_max": 2.5,
+  "weak_points": 150,
+  "strong_g_min": 0.1,
+  "strong_g_max": 2.8,
+  "strong_points": 100,
+  "x_g4_min": 0.0,
+  "x_g4_max": 50.0,
+  "y_min": 0.0,
+  "y_max": 0.20,
+  "theory_seed": null
+}
+```
+
+* `weak_g_min`, `weak_g_max`: range of (g) used to evaluate the weak-coupling analytical approximation.
+* `weak_points`: number of points in the weak-coupling analytical grid.
+* `strong_g_min`, `strong_g_max`: range of (g) used to evaluate the strong-coupling analytical approximation.
+* `strong_points`: number of points in the strong-coupling analytical grid.
+* `x_g4_min`, `x_g4_max`: displayed horizontal-axis range in terms of (g^4).
+* `y_min`, `y_max`: displayed vertical-axis range.
+* `theory_seed`: random seed used by analytical calculations that involve stochastic numerical evaluation.
+
+  * An integer makes the cached analytical curves reproducible.
+  * `null` uses a non-deterministic seed.
+
+The analytical-grid ranges determine where the theoretical approximations are evaluated; they do not change the HMC simulation points. The displayed axis ranges affect only the generated figures.
+
+The production configuration values reproduce the constants that were previously embedded directly in the simulation and plotting scripts. Changes to a configuration file therefore provide a complete record of the parameters used for a particular numerical experiment.
+
 
 ## Output layout
 
