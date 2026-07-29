@@ -1,7 +1,7 @@
 {
   "lattice": {
     "size": 32,
-    "dimension": 2,
+    "dimension": 3,
     "alpha": 1.0,
     "gammas": [
       1.0
@@ -17,15 +17,15 @@
     40.0
   ],
   "hmc": {
-    "warmup_steps": 1000,
-    "production_steps": 10000,
+    "warmup_steps": 10000,
+    "production_steps": 20000,
     "sample_every": 10,
     "base_seed": null,
     "base_leapfrog_steps": 100
   },
   "correlator_backend": "parallel",
   "paths": {
-    "two_point": "results/generated/two_point/two_point_d2.csv",
+    "two_point": "results/generated/two_point/two_point_d3.csv",
     "figures": "figures/generated/two_point",
     "theory_cache": "cache/theory"
   },
