@@ -32,7 +32,7 @@ def run(
         numerical = numerical[np.isclose(numerical["gamma"].astype(float), selected_gamma)]
     if numerical.empty:
         raise ValueError(f"No free-energy rows found for gamma={selected_gamma}")
-    error_column = "quadrature_error" if "quadrature_error" in numerical.columns else "f_error"
+    error_column = "f_error" #"quadrature_error" if "quadrature_error" in numerical.columns else "f_error"
     theory = _theory_curves(config, recompute=recompute_theory, gamma=selected_gamma)
 
     figure, axis = plt.subplots(figsize=(10, 8))
@@ -41,7 +41,7 @@ def run(
         np.abs(theory["strong_values"][1]),
         label="Strong-coupling truncation estimate",
     )
-    axis.scatter(numerical["g^4"], numerical[error_column], label="Numerical quadrature error", color="red")
+    axis.scatter(numerical["g^4"], numerical[error_column], label="HMC simulation error", color="red")
     axis.set_xlabel(r"$g^4$", fontsize=20)
     axis.set_ylabel("absolute error", fontsize=16)
     axis.tick_params(axis="both", labelsize=14)

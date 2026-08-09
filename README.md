@@ -99,7 +99,7 @@ python run_pipeline.py two-point --config configs/two_point.json --skip-simulati
 
 For the weak-coupling comparison, replace `strong` with `weak`.
 
-The two-point pipeline retains the required field configurations in memory while the correlation estimator is evaluated, but does not save them as `.npy` files.
+The two-point pipeline retains the required field configurations in memory while the correlation estimator is evaluated.
 
 ## Resume and overwrite behavior
 
@@ -279,6 +279,10 @@ cache/
 └── theory/          # cached analytical curves; ignored by Git
 ```
 
+<!--
+
+NEED TO BE TESTED AND FIXED
+
 The selected reference CSV files can be plotted directly, for example:
 
 ```bash
@@ -288,6 +292,7 @@ python free_energy_comparison.py --config configs/free_energy.json --data result
 ```bash
 python two_point_function_comparison.py --config configs/two_point.json --data results/reference/two_point/two_point_d3_averaged.csv --regime strong
 ```
+ -->
 
 ## Repository structure
 

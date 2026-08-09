@@ -21,6 +21,42 @@ from simulation_utils import (
 
 LOGGER = logging.getLogger(__name__)
 
+from scipy.interpolate import CubicSpline
+
+
+import numpy as np
+from scipy.interpolate import interp1d
+from scipy.integrate import quad
+
+
+def integration_weights(
+    couplings: np.ndarray,
+    upper: float,
+    interpolation: str = "cubic",
+) -> np.ndarray:
+    weights = np.empty(len(couplings), dtype=float)
+
+    for i in range(len(couplings)):
+        basis = np.zeros(len(couplings), dtype=float)
+        basis[i] = 1.0
+
+        basis_interpolator = interp1d(
+            couplings,
+            basis,
+            kind=interpolation,
+            fill_value="extrapolate",
+            assume_sorted=True,
+        )
+
+        weights[i] = quad(
+            basis_interpolator,
+            couplings[0],
+            upper,
+        )[0]
+
+    return weights
+
+
 
 def compute_free_energy(observables: pd.DataFrame, interpolation: str = "cubic") -> pd.DataFrame:
     """Apply the same thermodynamic-integration formula as the original script."""
@@ -62,15 +98,29 @@ def compute_free_energy(observables: pd.DataFrame, interpolation: str = "cubic")
             assume_sorted=True,
         )
 
-        for coupling in couplings:
+        weights = integration_weights(
+            couplings,
+            couplings[-1],
+        )
+
+
+        for i, coupling in enumerate(couplings):
             integral, quadrature_error = quad(lambda value: float(derivative(value)), 0.0, coupling)
+
+            # variance of sum of independent (different couplings) random variables
+            hmc_error = (
+                np.sqrt(
+                    np.sum((weights[:i] * observables["phi4_naive_standard_error"][:i]) ** 2)
+                )
+            )
+
             rows.append(
                 {
                     "g^4": float(coupling),
                     "gamma": float(gamma),
                     "f": float(integral / 24.0),
                     # Keep f_error for compatibility with older plotting scripts.
-                    "f_error": float(quadrature_error / 24.0),
+                    "f_error": float(hmc_error / 24.0), #float(quadrature_error / 24.0),
                     "quadrature_error": float(quadrature_error / 24.0),
                 }
             )

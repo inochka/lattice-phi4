@@ -1,6 +1,6 @@
 {
   "lattice": {
-    "size": 8,
+    "size": 32,
     "dimension": 2,
     "alpha": 1.0,
     "gammas": [
