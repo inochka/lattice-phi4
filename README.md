@@ -143,9 +143,9 @@ All relative paths are resolved from the repository root.
 * `size`: number of lattice sites ($M$) along each spatial direction. The total number of sites is $N=M^d$.
 * `dimension`: lattice dimension ($d$).
 * `alpha`: coefficient of the lattice Laplacian in the quadratic part of the action:
-  $$
+  ```math
   L=-\alpha\Delta+\gamma.
-  $$
+  ```
 * `gammas`: values of the quadratic coefficient (\gamma). The pipeline performs an independent calculation for every value in this list.
 
 ### Coupling constants
@@ -191,11 +191,11 @@ The values should be given in ascending order and should include $(g^4=0)$ when 
 
 The approximate number of stored measurements per parameter combination is
 
-$$
+```math
 N_{\mathrm{samples}} \approx
 \frac{\texttt{production\_steps}}
 {\texttt{sample\_every}}
-$$
+```
 
 Warm-up trajectories are not included in this number.
 
@@ -319,7 +319,7 @@ python two_point_function_comparison.py --config configs/two_point.json --data r
 
 Consider a scalar field on a periodic, $d$-dimensional hypercubic lattice with $M$ sites in every dimension and $N=M^d$ total sites. The action is
 
-$$
+```math
 S[\phi]
 =
 \frac{1}{2}\sum_{x,x'}L_{x,x'}\phi(x)\phi(x')
@@ -327,28 +327,28 @@ S[\phi]
 \sum_x V(\phi(x)),
 \qquad
 V(\phi)=\frac{g^{2n}}{(2n)!}\phi^{2n},
-$$
+```
 
 where $n>1$ and
 
-$$
+```math
 L=-\alpha\triangle+\gamma,
-$$
+```
 
 with $\alpha>0$ and $\gamma>0$. The lattice Laplacian is
 
-$$
+```math
 (\triangle f)(\vec r)
 =
 \sum_{j=1}^{d}
 \left[
  f(\vec r+\vec e_j)-2f(\vec r)+f(\vec r-\vec e_j)
 \right].
-$$
+```
 
 For periodic boundary conditions, the eigenvalues and eigenvectors of $L$ are
 
-$$
+```math
 \lambda_k
 =
 \gamma+4\alpha\sum_{j=1}^{d}\sin^2\left(\frac{p_j}{2}\right),
@@ -356,11 +356,11 @@ $$
 \vec p_k=\frac{2\pi\vec k}{M},
 \qquad
 \vec k\in\{0,\ldots,M-1\}^{d},
-$$
+```
 
-$$
+```math
 h_k(x)=\frac{1}{\sqrt N}e^{i\langle p_k,x\rangle}.
-$$
+```
 
 The simulations in this repository are performed at finite $M$. A sufficiently large lattice is used as an approximation to the large-volume regime; no finite-size extrapolation is performed by these scripts.
 
@@ -368,58 +368,58 @@ The simulations in this repository are performed at finite $M$. A sufficiently l
 
 The normalized partition function is
 
-$$
+```math
 \mathcal Z
 =
 \int_{\mathbb R^N}
 \frac{\prod_x d\phi_x}
 {\sqrt{(2\pi)^N(\det L)^{-1}}}
 \exp[-S[\phi]],
-$$
+```
 
 and the free energy is defined by
 
-$$
+```math
 \mathcal Z=e^{-\mathcal F}.
-$$
+```
 
 The numerical quantity reported by the scripts is the finite-lattice free energy per site,
 
-$$
+```math
 f_M=\frac{\mathcal F}{N}.
-$$
+```
 
 ### Discrete Fourier transform
 
 The convention used in the article and in this repository is
 
-$$
+```math
 H(x)=\frac{1}{N}\sum_p H(p)e^{-ipx},
-$$
+```
 
 with inverse transform
 
-$$
+```math
 H(p)=\sum_x H(x)e^{ipx}.
-$$
+```
 
 The sum is taken over admissible lattice momenta. For a large lattice, it approaches
 
-$$
+```math
 H(x)=\frac{1}{(2\pi)^d}\int_{[0,2\pi]^d}H(p)e^{-ipx}\,d^dp.
-$$
+```
 
 ### Momentum-space two-point function
 
 Using translational invariance,
 
-$$
+```math
 D(p)
 =
 \langle\phi(p)\phi(-p)\rangle
 =
 \sum_x\langle\phi(0)\phi(x)\rangle e^{ipx}.
-$$
+```
 
 The estimator averages over all lattice translations before transforming to momentum space. The implementation is contained in `core/utils.py` and is called by `hmc_two_point.py`.
 
@@ -427,20 +427,20 @@ The estimator averages over all lattice translations before transforming to mome
 
 For the quartic interaction used by the numerical free-energy pipeline,
 
-$$
+```math
 \frac{\partial f_M}{\partial(g^4)}
 =
 \frac{1}{4!}\langle\phi^4(x)\rangle.
-$$
+```
 
 Therefore,
 
-$$
+```math
 f_M(g)-f_M(0)
 =
 \frac{1}{4!}\int_0^{g^4}
 \langle\phi^4(x)\rangle_{g}\,d(g^4).
-$$
+```
 
 The current implementation uses cubic interpolation between the simulated coupling values and adaptive quadrature for the final integral. The column `quadrature_error` contains the error estimate returned by the numerical quadrature routine. The column `phi4_naive_standard_error` is retained as a diagnostic for the sampled observable and is not propagated into `f_M` by the current pipeline; this preserves the calculation used for the article.
 
