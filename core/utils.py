@@ -1,38 +1,43 @@
 import logging
-from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from itertools import product
-from multiprocessing import Pool, cpu_count, shared_memory, Lock, Manager
 
 import numpy as np
-# import numba
-from joblib import Parallel, delayed, Memory
-# from numba import njit
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
-# numba_logger = logging.getLogger('numba')
-# numba_logger.setLevel(logging.INFO)
 
 
-def cross_validation_mean_error_np(samples: np.ndarray, k: int = 100):
+def shuffled_group_jackknife_mean_error(samples: np.ndarray, k_folds: int = 100):
     """Return mean and estimated lower error bound using k-fold cross-validation."""
+    samples = np.asarray(samples)
+
+    n_samples = samples.shape[0]
+
+    if not 2 <= k_folds <= n_samples:
+        raise ValueError(
+            f"k must satisfy 2 <= k <= n_samples, got {k_folds}"
+        )
+
     np.random.shuffle(samples)
-    folds = np.array_split(samples, k)  # Делим на фолды, учитывая размер выборки
+
+    total_sum = samples.sum(axis=0)
+
     means = []
 
-    for i in tqdm(range(k)):
-        #validation_samples = folds[i]
-        train_samples = np.concatenate([fold for j, fold in enumerate(folds) if j != i])
-        means.append(train_samples.mean(axis=0))
-        #means.append(validation_samples.mean(axis=0))
-
+    for fold in np.array_split(samples, k_folds, axis=0):
+        means.append(
+            (total_sum - fold.sum(axis=0))
+            / (n_samples - len(fold))
+        )
 
     means = np.asarray(means)
+
     mean = means.mean(axis=0)
-    error = np.sqrt(k) * np.std(means, axis=0, ddof=1)
+    error = np.sqrt(k_folds) * means.std(axis=0, ddof=1)
 
     return np.array([mean, error])
+
 
 def jackknife(samples: np.ndarray):
     """Return mean and estimated lower error bound."""
@@ -48,6 +53,51 @@ def jackknife(samples: np.ndarray):
     return np.array([mean, error])
 
 
+def blocked_jackknife(
+    samples: np.ndarray,
+    block_size: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Block jackknife over consecutive retained HMC configurations.
+
+    samples.shape == (n_samples, n_momenta)
+    """
+    n_samples = samples.shape[0]
+    n_blocks = n_samples // block_size
+
+    if n_blocks < 2:
+        raise ValueError("At least two complete blocks are required.")
+
+    n_used = n_blocks * block_size
+    samples = samples[:n_used]
+
+    block_sums = samples.reshape(
+        n_blocks,
+        block_size,
+        samples.shape[1],
+    ).sum(axis=1)
+
+    total_sum = block_sums.sum(axis=0)
+
+    leave_one_out = (
+        total_sum[None, :] - block_sums
+    ) / (n_used - block_size)
+
+    mean = samples.mean(axis=0)
+
+    jackknife_mean = leave_one_out.mean(axis=0)
+
+    error = np.sqrt(
+        (n_blocks - 1) / n_blocks
+        * np.sum(
+            (leave_one_out - jackknife_mean) ** 2,
+            axis=0,
+        )
+    )
+
+    return mean, error
+
+
 def montecarlo_integrate(func: callable, bounds: np.array):
     num_samples = 50000 #- d=2
     #num_samples = 150000  # d=3
@@ -58,6 +108,17 @@ def montecarlo_integrate(func: callable, bounds: np.array):
     volume = np.prod(bounds[:, 1] - bounds[:, 0])
     #return np.mean(values) * volume
     return jackknife(values) * volume
+
+
+def two_point_sample_fft(phi: np.ndarray) -> np.ndarray:
+    """Compute D(p) for p=(2*pi*k/L,0,...,0), k=0,...,L-1."""
+    transverse_axes = tuple(range(1, phi.ndim))
+
+    projected = phi.sum(axis=transverse_axes)
+
+    phi_p = np.fft.fft(projected)
+
+    return np.abs(phi_p) ** 2 / phi.size
 
 
 def get_corr_func_coord(cfgs: np.ndarray):
@@ -84,85 +145,6 @@ def get_corr_func_coord(cfgs: np.ndarray):
     return np.mean(shifted_cf, axis=1)
 
 
-
-def get_corr_func_mom_parallel(cfgs: np.ndarray, p: np.ndarray):
-    d = cfgs.ndim - 1
-    L = cfgs.shape[1]
-    samples_num = cfgs.shape[0] * L ** (d - 1)
-    assert len(p) == L
-    spatial_axis = tuple(np.arange(1, d + 1))
-
-    shifts_coords = list(product(*[range(L)] * d))
-
-    # Создаем разделяемую память для cfgs
-    shm_cfgs = shared_memory.SharedMemory(create=True, size=cfgs.nbytes)
-    shared_cfgs = np.ndarray(cfgs.shape, dtype=cfgs.dtype, buffer=shm_cfgs.buf)
-    shared_cfgs[:] = cfgs[:]
-
-    # Создаем разделяемую память для corrs
-    corrs_shape = (samples_num, L)
-    shm_corrs = shared_memory.SharedMemory(create=True, size=np.zeros(corrs_shape).nbytes)
-    shared_corrs = np.ndarray(corrs_shape, dtype=np.float64, buffer=shm_corrs.buf)
-    shared_corrs.fill(0)
-
-    manager = Manager()
-    lock = manager.Lock()
-
-    def process_chunk(chunk, cfgs_shape, corrs_shape, shm_cfgs_name, shm_corrs_name):
-        """Обрабатывает чанк сдвигов и обновляет corrs."""
-        # Подключаемся к разделяемой памятиx
-        existing_shm_cfgs = shared_memory.SharedMemory(name=shm_cfgs_name)
-        existing_shm_corrs = shared_memory.SharedMemory(name=shm_corrs_name)
-
-        local_cfgs = np.ndarray(cfgs_shape, dtype=np.float64, buffer=existing_shm_cfgs.buf)
-        local_corrs = np.ndarray(corrs_shape, dtype=np.float64, buffer=existing_shm_corrs.buf)
-
-        # Локальная сумма для текущего чанка
-        local_chunk_corrs = np.zeros(corrs_shape)
-
-        for shift in chunk:
-            cos_values = np.cos(p @ np.array(shift))
-            cos_values = cos_values.reshape((1,) * (local_cfgs.ndim - 1) + (-1,))
-            local_chunk_corrs += (local_cfgs * np.roll(local_cfgs, shift, axis=spatial_axis) * cos_values).reshape(-1, L)
-
-        # Синхронно обновляем общий массив corrs
-        with lock:
-            local_corrs += local_chunk_corrs
-        # Закрываем память
-        existing_shm_cfgs.close()
-        existing_shm_corrs.close()
-
-    # Разбиваем сдвиги на чанки
-    num_chunks = 100
-    chunk_size = len(shifts_coords) // num_chunks + 1
-    chunks = [shifts_coords[i:i + chunk_size] for i in range(0, len(shifts_coords), chunk_size)]
-
-    # Параллельная обработка чанков
-    Parallel(n_jobs=6, backend="loky")(
-        delayed(process_chunk)(
-            chunk,
-            cfgs.shape,
-            corrs_shape,
-            shm_cfgs.name,
-            shm_corrs.name,
-        )
-        for chunk in tqdm(chunks)
-    )
-
-    # Закрываем и удаляем разделяемую память
-    shm_cfgs.close()
-    shm_cfgs.unlink()
-
-    # Получаем итоговый corrs из общей памяти
-    corrs = np.array(np.ndarray(corrs_shape, dtype=np.float64, buffer=shm_corrs.buf).T)
-
-    shm_corrs.close()
-    shm_corrs.unlink()
-
-    # Расчет средних и ошибок через кросс-валидацию
-    logger.info(f"Calculating means and error using cross-validation...")
-    return np.array([cross_validation_mean_error_np(sample) for sample in corrs])
-
 def get_corr_func_mom_optimized(cfgs: np.ndarray, p: np.ndarray):
     d = cfgs.ndim - 1
     L = cfgs.shape[1]
@@ -188,7 +170,7 @@ def get_corr_func_mom_optimized(cfgs: np.ndarray, p: np.ndarray):
     # TODO: сразу сохранять фолды, а не весь массив, чтобы память поэкономить? пускай даже на 1000 элементов
     # TODO: через разделенную память разбить сдвиги на чанки и разделить между 2-3 процессорами
     logger.info(f"Calculating means and error using cross validation...")
-    return np.array([cross_validation_mean_error_np(sample) for sample in corrs])
+    return np.array([shuffled_group_jackknife_mean_error(sample) for sample in corrs])
 
 
 def compute_corr_for_shift(cfgs, shift_0, shift_1, p, L, d, spatial_axis):

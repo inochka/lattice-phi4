@@ -141,7 +141,7 @@ def run(
     if not numerical_path.is_file():
         raise FileNotFoundError(
             f"Two-point data not found: {numerical_path}. "
-            "Run hmc_multiprocessing_immediate_calculation.py first."
+            "Run hmc_two_point.py first."
         )
     numerical = read_csv(numerical_path)
     selected_gamma = float(config["lattice"]["gammas"][0] if gamma is None else gamma)

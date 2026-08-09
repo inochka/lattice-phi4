@@ -87,7 +87,7 @@ def run(config: dict) -> pd.DataFrame:
     if not observables_path.is_file():
         raise FileNotFoundError(
             f"Free-energy observables not found: {observables_path}. "
-            "Run hmc_multiprocessing.py first."
+            "Run hmc_free_energy.py first."
         )
 
     observables = read_csv(observables_path)

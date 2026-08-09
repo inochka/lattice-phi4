@@ -49,7 +49,7 @@ def main() -> None:
 
     if args.pipeline == "free-energy":
         if not args.skip_simulation:
-            _run("hmc_multiprocessing.py", *config_arguments, *overwrite_arguments)
+            _run("hmc_free_energy.py", *config_arguments, *overwrite_arguments)
         _run("files_to_free_energy_num.py", *config_arguments)
         if args.with_plots:
             _run(
@@ -62,7 +62,7 @@ def main() -> None:
         return
 
     if not args.skip_simulation:
-        _run("hmc_multiprocessing_immediate_calculation.py", *config_arguments, *overwrite_arguments)
+        _run("hmc_two_point.py", *config_arguments, *overwrite_arguments)
     if args.with_plots:
         _run(
             "two_point_function_comparison.py",

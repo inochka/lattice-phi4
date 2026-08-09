@@ -18,12 +18,12 @@
   ],
   "hmc": {
     "warmup_steps": 10000,
-    "production_steps": 20000,
+    "production_steps": 70000,
     "sample_every": 10,
     "base_seed": null,
-    "base_leapfrog_steps": 100
+    "base_leapfrog_steps": 30,
+    "processes": 4
   },
-  "correlator_backend": "parallel",
   "paths": {
     "two_point": "results/generated/two_point/two_point_d3.csv",
     "figures": "figures/generated/two_point",

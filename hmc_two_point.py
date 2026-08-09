@@ -9,9 +9,15 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from multiprocessing import Pool
 
 from core.lattice import Lattice
-from core.utils import get_corr_func_mom_optimized, get_corr_func_mom_parallel, get_momenta_grid
+from core.utils import (
+    get_momenta_grid, 
+    shuffled_group_jackknife_mean_error, 
+    two_point_sample_fft,
+)
+
 from simulation_utils import (
     atomic_write_csv,
     configure_logging,
@@ -49,16 +55,15 @@ def _task_key(row: dict[str, Any] | pd.Series) -> tuple[Any, ...]:
 
 
 def _build_tasks(config: dict[str, Any]) -> list[dict[str, Any]]:
-    require_keys(config, ["lattice", "couplings_g4", "hmc", "paths", "correlator_backend"], "root")
+    require_keys(config, ["lattice", "couplings_g4", "hmc", "paths"], "root")
     lattice = config["lattice"]
     hmc = config["hmc"]
     require_keys(lattice, ["size", "dimension", "alpha", "gammas"], "lattice")
-    require_keys(hmc, ["warmup_steps", "production_steps", "sample_every", "base_leapfrog_steps", "base_seed"], "hmc")
+    require_keys(hmc, ["warmup_steps", "production_steps", "sample_every", "base_leapfrog_steps", "base_seed", "processes"], "hmc")
 
     if int(hmc["sample_every"]) <= 0:
         raise ValueError("hmc.sample_every must be positive")
-    if config["correlator_backend"] not in {"optimized", "parallel"}:
-        raise ValueError("correlator_backend must be either 'optimized' or 'parallel'")
+
 
     tasks = [
         {
@@ -72,7 +77,7 @@ def _build_tasks(config: dict[str, Any]) -> list[dict[str, Any]]:
             "sample_every": int(hmc["sample_every"]),
             "base_leapfrog_steps": int(hmc["base_leapfrog_steps"]),
             "base_seed": hmc["base_seed"],
-            "correlator_backend": config["correlator_backend"],
+            # "correlator_backend": config["correlator_backend"],
         }
         for coupling in config["couplings_g4"]
         for gamma in lattice["gammas"]
@@ -82,8 +87,10 @@ def _build_tasks(config: dict[str, Any]) -> list[dict[str, Any]]:
     return tasks
 
 
-def simulate_task(task: dict[str, Any]) -> pd.DataFrame:
-    seed = task_seed(task["base_seed"], int(task["task_index"]))
+def simulate_task(payload: tuple[int, dict[str, Any], bool]) -> pd.DataFrame:
+    task_index, task, show_progress = payload
+
+    seed = task_seed(task["base_seed"], task_index)
     np.random.seed(seed)
 
     lattice = Lattice(
@@ -102,31 +109,51 @@ def simulate_task(task: dict[str, Any]) -> pd.DataFrame:
         seed,
     )
 
-    for _ in tqdm(range(task["warmup_steps"]), desc="warm-up", leave=False):
+    for _ in tqdm(
+        range(task["warmup_steps"]),
+        desc=f"warm-up g4={task['g^4']}",
+        disable=not show_progress,
+        leave=False,
+    ):
         lattice.hmc(n_steps=task["base_leapfrog_steps"])
 
-    accepted = 0
-    configurations: list[np.ndarray] = []
-    for iteration in tqdm(range(task["production_steps"]), desc="sampling", leave=False):
-        phi, was_accepted = lattice.hmc(n_steps=task["base_leapfrog_steps"])
-        accepted += int(was_accepted)
-        if iteration % task["sample_every"] == 0:
-            configurations.append(np.array(phi, copy=True))
-
-    if not configurations:
-        raise RuntimeError("No samples were retained; check production_steps and sample_every.")
-
-    cfgs = np.asarray(configurations)
-    momenta_grid = get_momenta_grid(task["lattice_size"], task["dimension"])[:-1]
-    LOGGER.info(
-        "Computing the two-point estimator from %s retained configurations using '%s' backend",
-        cfgs.shape[0],
-        task["correlator_backend"],
+    n_retained = (
+        (task["production_steps"] - 1) // task["sample_every"] + 1
     )
-    if task["correlator_backend"] == "parallel":
-        corr_f_mom = get_corr_func_mom_parallel(cfgs, momenta_grid)
-    else:
-        corr_f_mom = get_corr_func_mom_optimized(cfgs, momenta_grid)
+
+    correlator_samples = np.empty(
+        (n_retained, task["lattice_size"]),
+        dtype=np.float64,
+    )
+
+    momenta_grid = get_momenta_grid(task["lattice_size"], task["dimension"])[:-1]
+
+    accepted = 0
+    sample_index = 0
+
+    for iteration in tqdm(
+        range(task["production_steps"]),
+        desc=f"sampling g4={task['g^4']}",
+        disable=not show_progress,
+        leave=False,
+    ):
+        phi, was_accepted = lattice.hmc(
+            n_steps=task["base_leapfrog_steps"]
+        )
+
+        accepted += int(was_accepted)
+
+        if iteration % task["sample_every"] == 0:
+            correlator_samples[sample_index] = two_point_sample_fft(phi)
+            sample_index += 1
+
+    corr_f_mom = shuffled_group_jackknife_mean_error(
+        correlator_samples,
+        k_folds=20,
+    )
+
+    # corr_f_mom = np.column_stack([mean, error])
+
 
     acceptance_rate = accepted / task["production_steps"]
     rows = [
@@ -136,8 +163,8 @@ def simulate_task(task: dict[str, Any]) -> pd.DataFrame:
             "alpha": task["alpha"],
             "gamma": task["gamma"],
             "g^4": task["g^4"],
-            "D(p)": float(corr_f_mom.T[0, index]),
-            "error": float(corr_f_mom.T[1, index]),
+            "D(p)": float(corr_f_mom[0, index]),
+            "error": float(corr_f_mom[1, index]),
             "p": float(momenta_grid.T[0, index]),
             "acceptance_rate": acceptance_rate,
             "warmup_steps": task["warmup_steps"],
@@ -145,9 +172,9 @@ def simulate_task(task: dict[str, Any]) -> pd.DataFrame:
             "sample_every": task["sample_every"],
             "base_leapfrog_steps": task["base_leapfrog_steps"],
             "base_seed": task["base_seed"],
-            "retained_configurations": int(cfgs.shape[0]),
+            "retained_configurations": int(n_retained),
             "seed": seed,
-            "correlator_backend": task["correlator_backend"],
+            # "correlator_backend": task["correlator_backend"],
         }
         for index in range(task["lattice_size"])
     ]
@@ -181,12 +208,59 @@ def run(config: dict[str, Any], overwrite: bool = False) -> pd.DataFrame:
         LOGGER.info("All requested two-point simulations are already present in %s", output_path)
         return existing
 
+    
+    process_count = min(
+        max(1, int(config["hmc"]["processes"])),
+        len(pending),
+    )
+    payloads = [(int(task["task_index"]), task, process_count == 1) for task in pending]
+
     current = existing.copy()
-    for task in tqdm(pending, desc="two-point tasks"):
-        task_result = simulate_task(task)
-        current = pd.concat([current, task_result], ignore_index=True)
-        current = current.sort_values(["gamma", "g^4", "p"]).reset_index(drop=True)
-        atomic_write_csv(current, output_path)
+
+    if process_count == 1:
+        iterator = map(simulate_task, payloads)
+
+        for task_result in tqdm(
+                        iterator,
+                        total=len(payloads),
+                        desc="two-point tasks",
+                    ):
+            
+            current = pd.concat(
+                [current, task_result],
+                ignore_index=True,
+            )
+        
+            current = (
+                current
+                .sort_values(["gamma", "g^4", "p"])
+                .reset_index(drop=True)
+            )
+        
+            atomic_write_csv(current, output_path)
+
+    else:
+
+        with Pool(processes=process_count) as pool:
+            iterator = pool.imap_unordered(simulate_task, payloads)
+
+            for task_result in tqdm(
+                iterator,
+                total=len(payloads),
+                desc="two-point tasks",
+            ):
+                current = pd.concat(
+                    [current, task_result],
+                    ignore_index=True,
+                )
+
+                current = (
+                    current
+                    .sort_values(["gamma", "g^4", "p"])
+                    .reset_index(drop=True)
+                )
+
+                atomic_write_csv(current, output_path)
 
     return read_csv(output_path)
 

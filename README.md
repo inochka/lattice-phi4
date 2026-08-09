@@ -71,7 +71,7 @@ python run_pipeline.py free-energy --config configs/free_energy.json --overwrite
 
 This command performs two steps:
 
-1. `hmc_multiprocessing.py` runs the HMC simulations and writes the measured $\langle\phi^4\rangle$ values.
+1. `hmc_free_energy.py` runs the HMC simulations and writes the measured $\langle\phi^4\rangle$ values.
 2. `files_to_free_energy_num.py` interpolates these values and performs the numerical integration over $g^4$.
 
 To generate the comparison and error plots as well:
@@ -175,7 +175,7 @@ The values should be given in ascending order and should include $(g^4=0)$ when 
   "sample_every": 10,
   "processes": 6,
   "base_seed": null,
-  "base_leapfrog_steps": 100
+  "base_leapfrog_steps": 20
 }
 ```
 
@@ -300,11 +300,11 @@ python two_point_function_comparison.py --config configs/two_point.json --data r
 ├── tests/
 ├── simulation_utils.py
 ├── run_pipeline.py
-├── hmc_multiprocessing.py
+├── hmc_free_energy.py
 ├── files_to_free_energy_num.py
 ├── free_energy_comparison.py
 ├── free_energy_error_plot.py
-├── hmc_multiprocessing_immediate_calculation.py
+├── hmc_two_point.py
 └── two_point_function_comparison.py
 ```
 
@@ -394,7 +394,7 @@ $$
 The convention used in the article and in this repository is
 
 $$
-H(x)=\frac{1}{(2\pi)^dN}\sum_p H(p)e^{-ipx},
+H(x)=\frac{1}{N}\sum_p H(p)e^{-ipx},
 $$
 
 with inverse transform
@@ -421,7 +421,7 @@ D(p)
 \sum_x\langle\phi(0)\phi(x)\rangle e^{ipx}.
 $$
 
-The estimator averages over all lattice translations before transforming to momentum space. The implementation is contained in `core/utils.py` and is called by `hmc_multiprocessing_immediate_calculation.py`.
+The estimator averages over all lattice translations before transforming to momentum space. The implementation is contained in `core/utils.py` and is called by `hmc_two_point.py`.
 
 ### Free-energy integration
 
@@ -439,7 +439,7 @@ $$
 f_M(g)-f_M(0)
 =
 \frac{1}{4!}\int_0^{g^4}
-\langle\phi^4(x)\rangle_{G}\,dG.
+\langle\phi^4(x)\rangle_{g}\,d(g^4).
 $$
 
 The current implementation uses cubic interpolation between the simulated coupling values and adaptive quadrature for the final integral. The column `quadrature_error` contains the error estimate returned by the numerical quadrature routine. The column `phi4_naive_standard_error` is retained as a diagnostic for the sampled observable and is not propagated into `f_M` by the current pipeline; this preserves the calculation used for the article.

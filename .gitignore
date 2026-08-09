@@ -12,8 +12,8 @@ venv/
 Thumbs.db
 
 # Generated simulation outputs
-results/generated/
-figures/generated/
+#results/generated/
+#figures/generated/
 cache/
 
 # Large legacy intermediates

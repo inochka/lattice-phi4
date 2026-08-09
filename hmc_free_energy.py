@@ -188,8 +188,11 @@ def run(config: dict[str, Any], overwrite: bool = False) -> pd.DataFrame:
     if not pending:
         LOGGER.info("All requested free-energy simulations are already present in %s", output_path)
         return existing
-
-    process_count = max(1, int(config["hmc"]["processes"]))
+    
+    process_count = min(
+        max(1, int(config["hmc"]["processes"])),
+        len(pending),
+    )
     payloads = [(int(task["task_index"]), task, process_count == 1) for task in pending]
     rows = [] if overwrite or existing.empty else existing.to_dict(orient="records")
 

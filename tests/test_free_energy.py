@@ -7,7 +7,7 @@ import pandas as pd
 
 from core.lattice import Lattice
 from files_to_free_energy_num import compute_free_energy
-from hmc_multiprocessing import _simulate_task
+from hmc_free_energy import _simulate_task
 from simulation_utils import task_seed
 
 
