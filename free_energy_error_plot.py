@@ -67,7 +67,7 @@ def run(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Plot free-energy error estimates.")
-    parser.add_argument("--config", default="configs/free_energy.json", help="JSON configuration file")
+    parser.add_argument("--config", default="configs/free_energy_d2.json", help="JSON configuration file")
     parser.add_argument("--data", help="Override the numerical free-energy CSV from the configuration")
     parser.add_argument("--gamma", type=float, help="Gamma value to plot; defaults to the first configured value")
     parser.add_argument("--show", action="store_true", help="Open the figure after saving it")

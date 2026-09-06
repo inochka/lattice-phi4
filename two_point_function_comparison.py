@@ -15,6 +15,7 @@ from analytical_expressions import (
     G_xi_w,
     two_point_correlator_amputated_s,
     two_point_correlator_amputated_w,
+    two_point_correlator_s_dyson,
 )
 from simulation_utils import (
     cache_key,
@@ -83,6 +84,16 @@ def _compute_theory(
                         g=g,
                     )
                 )
+                # value = G_xi_w(alpha=alpha, gamma=gamma, xi=momentum) - (
+                #     G_xi_w(alpha=alpha, gamma=gamma, xi=momentum) ** 2
+                #     * two_point_correlator_s_dyson(
+                #         alpha=alpha,
+                #         gamma=gamma,
+                #         xi=momentum,
+                #         d=dimension,
+                #         g=g,
+                #     )
+                # )
             curve.append(value)
         values.append(np.asarray(curve))
 
@@ -170,6 +181,8 @@ def run(
     colormap = plt.get_cmap("tab10")
     colors = {coupling: colormap(index % 10) for index, coupling in enumerate(couplings)}
 
+    print(theory["couplings"])
+
     for index, coupling in enumerate(theory["couplings"]):
         axis.plot(
             theory["momenta"],
@@ -219,7 +232,7 @@ def run(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Plot numerical and analytical two-point functions.")
-    parser.add_argument("--config", default="configs/two_point.json", help="JSON configuration file")
+    parser.add_argument("--config", default="configs/two_point_d2.json", help="JSON configuration file")
     parser.add_argument("--regime", choices=["weak", "strong"], default="strong")
     parser.add_argument("--data", help="Override the numerical two-point CSV from the configuration")
     parser.add_argument("--gamma", type=float, help="Gamma value to plot; defaults to the first configured value")

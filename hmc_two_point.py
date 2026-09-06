@@ -267,7 +267,7 @@ def run(config: dict[str, Any], overwrite: bool = False) -> pd.DataFrame:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run HMC simulations for the two-point function.")
-    parser.add_argument("--config", default="configs/two_point.json", help="JSON configuration file")
+    parser.add_argument("--config", default="configs/two_point_d2.json", help="JSON configuration file")
     parser.add_argument(
         "--overwrite",
         action="store_true",

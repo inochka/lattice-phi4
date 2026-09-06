@@ -1,7 +1,7 @@
 {
   "lattice": {
-    "size": 32,
-    "dimension": 3,
+    "size": 8,
+    "dimension": 4,
     "alpha": 1.0,
     "gammas": [
       1.0
@@ -29,7 +29,7 @@
   ],
   "hmc": {
     "warmup_steps": 10000,
-    "production_steps": 20000,
+    "production_steps": 30000,
     "sample_every": 10,
     "processes": 4,
     "base_seed": null,
@@ -48,13 +48,13 @@
     "weak_g_min": 0.0,
     "weak_g_max": 2.5,
     "weak_points": 150,
-    "strong_g_min": 0.1,
+    "strong_g_min": 1.0,
     "strong_g_max": 2.8,
     "strong_points": 100,
     "x_g4_min": 0.0,
     "x_g4_max": 50.0,
     "y_min": 0.0,
-    "y_max": 0.20,
+    "y_max": 0.08,
     "theory_seed": null
   }
 }

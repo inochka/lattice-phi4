@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="pipeline", required=True)
 
     free_energy = subparsers.add_parser("free-energy", help="Run the free-energy pipeline")
-    free_energy.add_argument("--config", default="configs/free_energy.json")
+    free_energy.add_argument("--config", default="configs/free_energy_d2.json")
     free_energy.add_argument("--overwrite", action="store_true")
     free_energy.add_argument("--skip-simulation", action="store_true")
     free_energy.add_argument("--with-plots", action="store_true")
@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     free_energy.add_argument("--recompute-theory", action="store_true")
 
     two_point = subparsers.add_parser("two-point", help="Run the two-point-function pipeline")
-    two_point.add_argument("--config", default="configs/two_point.json")
+    two_point.add_argument("--config", default="configs/two_point_d2.json")
     two_point.add_argument("--overwrite", action="store_true")
     two_point.add_argument("--skip-simulation", action="store_true")
     two_point.add_argument("--with-plots", action="store_true")

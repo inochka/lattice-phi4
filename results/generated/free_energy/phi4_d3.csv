@@ -1,2 +1,0 @@
-dimension,lattice_size,alpha,gamma,g^4,<phi^4>,phi4_naive_standard_error,acceptance_rate,warmup_steps,production_steps,sample_every,base_leapfrog_steps,base_seed,retained_samples,seed
-3,8,1.0,1.0,0.0,0.09901327038244462,0.0003499338508724658,0.9994,10000,20000,10,100,,2000,2425053522

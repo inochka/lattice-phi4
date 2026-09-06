@@ -66,7 +66,7 @@ All paths in the configuration files are resolved relative to the repository roo
 Run the complete numerical pipeline:
 
 ```bash
-python run_pipeline.py free-energy --config configs/free_energy.json --overwrite
+python run_pipeline.py free-energy --config configs/free_energy_d2.json --overwrite
 ```
 
 This command performs two steps:
@@ -77,7 +77,7 @@ This command performs two steps:
 To generate the comparison and error plots as well:
 
 ```bash
-python run_pipeline.py free-energy --config configs/free_energy.json --with-plots
+python run_pipeline.py free-energy --config configs/free_energy_d2.json --with-plots
 ```
 
 The analytical curves are cached under `cache/theory/`. Use `--recompute-theory` to ignore a compatible cache.
@@ -88,13 +88,13 @@ The analytical curves are cached under `cache/theory/`. Use `--recompute-theory`
 Run the HMC calculation:
 
 ```bash
-python run_pipeline.py two-point --config configs/two_point.json --overwrite
+python run_pipeline.py two-point --config configs/two_point_d2.json --overwrite
 ```
 
 Generate a strong-coupling comparison plot:
 
 ```bash
-python run_pipeline.py two-point --config configs/two_point.json --skip-simulation --with-plots --regime strong
+python run_pipeline.py two-point --config configs/two_point_d2.json --skip-simulation --with-plots --regime strong
 ```
 
 For the weak-coupling comparison, replace `strong` with `weak`.
@@ -119,9 +119,9 @@ The production and smoke-test configurations are stored in `configs/`:
 
 ```text
 configs/
-├── free_energy.json
+├── free_energy_d2.json
 ├── free_energy_smoke.json
-├── two_point.json
+├── two_point_d2.json
 └── two_point_smoke.json
 ```
 
@@ -286,11 +286,11 @@ NEED TO BE TESTED AND FIXED
 The selected reference CSV files can be plotted directly, for example:
 
 ```bash
-python free_energy_comparison.py --config configs/free_energy.json --data results/reference/free_energy/free_energy_d3.csv
+python free_energy_comparison.py --config configs/free_energy_d2.json --data results/reference/free_energy/free_energy_d3.csv
 ```
 
 ```bash
-python two_point_function_comparison.py --config configs/two_point.json --data results/reference/two_point/two_point_d3_averaged.csv --regime strong
+python two_point_function_comparison.py --config configs/two_point_d2.json --data results/reference/two_point/two_point_d3_averaged.csv --regime strong
 ```
  -->
 

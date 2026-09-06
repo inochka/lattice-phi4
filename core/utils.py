@@ -2,7 +2,9 @@ import logging
 from itertools import product
 
 import numpy as np
+from .error_propagator import Estimate
 from tqdm import tqdm
+from scipy.integrate import nquad
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +109,13 @@ def montecarlo_integrate(func: callable, bounds: np.array):
     #values = func(samples)
     volume = np.prod(bounds[:, 1] - bounds[:, 0])
     #return np.mean(values) * volume
-    return jackknife(values) * volume
+    return Estimate(*(jackknife(values) * volume))
+
+
+def nquad_estimate(func, ranges):
+    value, error = nquad(func, ranges)
+    return Estimate(value, error)
+
 
 
 def two_point_sample_fft(phi: np.ndarray) -> np.ndarray:
@@ -119,64 +127,6 @@ def two_point_sample_fft(phi: np.ndarray) -> np.ndarray:
     phi_p = np.fft.fft(projected)
 
     return np.abs(phi_p) ** 2 / phi.size
-
-
-def get_corr_func_coord(cfgs: np.ndarray):
-    """
-    Return connected two-point correlation function (from distance)
-    with errors for symmetric lattice along fixed axis (first).
-    For the periodic boundary conditions we place the number of axis and the position
-    of the initial cite does not matter.
-    """
-    mu = 1  # >=1
-    corr_func = []
-    if cfgs.ndim > 2:
-        cfgs = np.mean(cfgs, axis=tuple(range(2, cfgs.ndim)))
-
-    for shift in range(0, cfgs.shape[1]):
-        corr_func.append(np.mean(cfgs * np.roll(cfgs, shift, mu), axis=0))
-
-    shifted_cf = []
-    for shift in range(0, cfgs.shape[1]):
-        shifted_cf.append(np.roll(corr_func[shift], -shift, axis=0))
-
-    shifted_cf = np.array(shifted_cf)
-
-    return np.mean(shifted_cf, axis=1)
-
-
-def get_corr_func_mom_optimized(cfgs: np.ndarray, p: np.ndarray):
-    d = cfgs.ndim - 1
-    L = cfgs.shape[1]
-    samples_num = cfgs.shape[0] * L**(d-1)
-    assert len(p) == L
-    spatial_axis = tuple(np.arange(1, d + 1))
-
-    shifts_coords = product(*[range(L)] * d)  #, total=L ** d)
-    corrs = np.zeros((samples_num, L))
-    ## TODO: брать одномерный массив shifts??
-    for shift in tqdm(shifts_coords, total=L ** d):
-        # tODO: проверить, что тут все хорошо и согласовано по размерностям
-        cos_values = np.cos(p @ np.array(shift))
-        cos_values = cos_values.reshape((1,) * (cfgs.ndim - 1) + (-1,))
-        # готовим массив, чтобы потом просуммировать по сдвигам. Для одновременного учета всех импульсов используем векторизацию
-        # также используем, что импульсов имеется одномерный массив, и все остальные измерения (0+все, кроме последнего пространственного)
-        # дают нам просто большее количество выборок
-
-        corrs += (cfgs * np.roll(cfgs, shift, axis=spatial_axis) * cos_values).reshape(-1, L)
-
-    # останутся только разные выборки (N * L^d) + импульсы
-    corrs = corrs.T
-    # TODO: сразу сохранять фолды, а не весь массив, чтобы память поэкономить? пускай даже на 1000 элементов
-    # TODO: через разделенную память разбить сдвиги на чанки и разделить между 2-3 процессорами
-    logger.info(f"Calculating means and error using cross validation...")
-    return np.array([shuffled_group_jackknife_mean_error(sample) for sample in corrs])
-
-
-def compute_corr_for_shift(cfgs, shift_0, shift_1, p, L, d, spatial_axis):
-    shift = np.concatenate((shift_0, [shift_1]))
-    cos_values = (np.cos(p @ np.array(shift))).reshape((1,) * (cfgs.ndim - 1) + (-1,))
-    return (cfgs * np.roll(cfgs, shift, axis=spatial_axis) * cos_values).reshape(-1, L)
 
 
 

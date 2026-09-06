@@ -53,6 +53,7 @@ class FreeEnergyReductionTests(unittest.TestCase):
                 "g^4": [0.0, 1.0, 2.0, 3.0],
                 "gamma": [1.0, 1.0, 1.0, 1.0],
                 "<phi^4>": [24.0, 24.0, 24.0, 24.0],
+                "phi4_naive_standard_error": [0.1, 0.1, 0.1, 0.1],
             }
         )
         result = compute_free_energy(observables, interpolation="cubic")

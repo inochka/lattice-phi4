@@ -22,3 +22,6 @@ cache/
 # Temporary files
 *.tmp
 *.log
+
+**/generated/*
+!**/generated/.gitkeep

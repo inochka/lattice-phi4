@@ -217,7 +217,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run HMC simulations for the free-energy pipeline without storing field arrays."
     )
-    parser.add_argument("--config", default="configs/free_energy.json", help="JSON configuration file")
+    parser.add_argument("--config", default="configs/free_energy_d2.json", help="JSON configuration file")
     parser.add_argument(
         "--overwrite",
         action="store_true",

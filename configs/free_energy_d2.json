@@ -48,7 +48,7 @@
     "weak_g_min": 0.0,
     "weak_g_max": 2.5,
     "weak_points": 150,
-    "strong_g_min": 0.1,
+    "strong_g_min": 0.5,
     "strong_g_max": 2.8,
     "strong_points": 100,
     "x_g4_min": 0.0,

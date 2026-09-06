@@ -149,7 +149,7 @@ def run(config: dict) -> pd.DataFrame:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Integrate <phi^4> to obtain free energy per site.")
-    parser.add_argument("--config", default="configs/free_energy.json", help="JSON configuration file")
+    parser.add_argument("--config", default="configs/free_energy_d2.json", help="JSON configuration file")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     return parser.parse_args()
 
