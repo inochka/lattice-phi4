@@ -76,13 +76,13 @@ def blocked_jackknife(
     block_sums = samples.reshape(
         n_blocks,
         block_size,
-        samples.shape[1],
+        *samples.shape[1:] #samples.shape[1],
     ).sum(axis=1)
 
     total_sum = block_sums.sum(axis=0)
 
     leave_one_out = (
-        total_sum[None, :] - block_sums
+        total_sum[None, ...] - block_sums #total_sum[None, :] - block_sums
     ) / (n_used - block_size)
 
     mean = samples.mean(axis=0)

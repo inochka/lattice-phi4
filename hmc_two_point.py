@@ -16,6 +16,7 @@ from core.utils import (
     get_momenta_grid, 
     shuffled_group_jackknife_mean_error, 
     two_point_sample_fft,
+    blocked_jackknife,
 )
 
 from simulation_utils import (
@@ -147,13 +148,17 @@ def simulate_task(payload: tuple[int, dict[str, Any], bool]) -> pd.DataFrame:
             correlator_samples[sample_index] = two_point_sample_fft(phi)
             sample_index += 1
 
-    corr_f_mom = shuffled_group_jackknife_mean_error(
+    # corr_f_mom = shuffled_group_jackknife_mean_error(
+    #     correlator_samples,
+    #     k_folds=20,
+    # )
+
+    corr_mean, corr_error = blocked_jackknife(
         correlator_samples,
-        k_folds=20,
+        block_size=max(1, int(correlator_samples.shape[0] / 100.0)),
     )
 
-    # corr_f_mom = np.column_stack([mean, error])
-
+    #corr_f_mom = np.column_stack([corr_mean, corr_error])
 
     acceptance_rate = accepted / task["production_steps"]
     rows = [
@@ -163,8 +168,8 @@ def simulate_task(payload: tuple[int, dict[str, Any], bool]) -> pd.DataFrame:
             "alpha": task["alpha"],
             "gamma": task["gamma"],
             "g^4": task["g^4"],
-            "D(p)": float(corr_f_mom[0, index]),
-            "error": float(corr_f_mom[1, index]),
+            "D(p)": float(corr_mean[index]),
+            "error": float(corr_error[index]),
             "p": float(momenta_grid.T[0, index]),
             "acceptance_rate": acceptance_rate,
             "warmup_steps": task["warmup_steps"],

@@ -39,7 +39,7 @@ def run(
     axis.plot(
         theory["strong_g4"],
         np.abs(theory["strong_values"][1]),
-        label="Strong-coupling truncation estimate",
+        label="Strong-coupling truncated expansion error",
     )
     axis.scatter(numerical["g^4"], numerical[error_column], label="HMC simulation error", color="red")
     axis.set_xlabel(r"$g^4$", fontsize=20)
@@ -62,6 +62,99 @@ def run(
         plt.show()
     plt.close(figure)
     LOGGER.info("Saved figure to %s", output_path)
+
+
+    # now construct the plot of abcolute error of approximation
+
+    # Relative error of the strong-coupling approximation with respect to HMC.
+    # Compare only at the actual HMC coupling points, interpolating the much
+    # denser analytical curve onto those points.
+
+    numerical_g4 = numerical["g^4"].to_numpy(dtype=float)
+    numerical_f = numerical["f"].to_numpy(dtype=float)
+    numerical_error = numerical[error_column].to_numpy(dtype=float)
+
+    strong_g4 = np.asarray(theory["strong_g4"], dtype=float)
+    strong_f = np.asarray(theory["strong_values"][0], dtype=float)
+
+    # np.interp should only be used inside the analytical grid.
+    mask = (
+        (numerical_g4 >= strong_g4.min())
+        & (numerical_g4 <= strong_g4.max())
+        & (np.abs(numerical_f) > 1e-14)
+    )
+
+    comparison_g4 = numerical_g4[mask]
+    comparison_f = numerical_f[mask]
+    comparison_error = numerical_error[mask]
+
+    strong_at_hmc = np.interp(
+        comparison_g4,
+        strong_g4,
+        strong_f,
+    )
+
+    relative_approximation_error = (
+        np.abs(strong_at_hmc - comparison_f)
+        / np.abs(comparison_f)
+    )
+
+    relative_hmc_error = (
+        comparison_error
+        / np.abs(comparison_f)
+    )
+
+    relative_figure, relative_axis = plt.subplots(figsize=(10, 8))
+
+    relative_axis.scatter(
+        comparison_g4,
+        relative_approximation_error,
+        label="Strong-coupling relative approximation error",
+    )
+
+    relative_axis.scatter(
+        comparison_g4,
+        relative_hmc_error,
+        label="HMC relative statistical error",
+    )
+
+    relative_axis.set_xlabel(r"$g^4$", fontsize=20)
+    relative_axis.set_ylabel("relative error", fontsize=16)
+    relative_axis.tick_params(axis="both", labelsize=14)
+    relative_axis.set_xlim(
+        max(0.0, float(config["plot"]["strong_g_min"]) ** 4),
+        float(config["plot"]["x_g4_max"]),
+    )
+    relative_axis.legend(
+        loc="upper right",
+        shadow=True,
+        fontsize="large",
+    )
+    relative_axis.grid()
+    relative_figure.tight_layout()
+
+    relative_output_path = (
+        output_directory
+        / f"free_energy_relative_errors_d{dimension}.png"
+    )
+
+    relative_figure.savefig(
+        relative_output_path,
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+    if show:
+        plt.show()
+
+    plt.close(relative_figure)
+
+    LOGGER.info(
+        "Saved relative-error figure to %s",
+        relative_output_path,
+    )
+
+
     return str(output_path)
 
 

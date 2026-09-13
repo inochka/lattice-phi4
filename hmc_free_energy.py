@@ -18,6 +18,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from core.lattice import Lattice
+from core.utils import blocked_jackknife
 from simulation_utils import (
     atomic_write_csv,
     configure_logging,
@@ -103,17 +104,20 @@ def _simulate_task(payload: tuple[int, dict[str, Any], bool]) -> dict[str, Any]:
     if samples.size == 0:
         raise RuntimeError("No samples were retained; check production_steps and sample_every.")
 
-    naive_standard_error = (
-        float(np.std(samples, ddof=1) / np.sqrt(samples.size)) if samples.size > 1 else 0.0
-    )
+    # naive_standard_error = (
+    #     float(np.std(samples, ddof=1) / np.sqrt(samples.size)) if samples.size > 1 else 0.0
+    # )
+
+    phi_4_av, phi_4_error = blocked_jackknife(samples, block_size=max(int(0.01 * samples.shape[0]), 1))
+
     result = {
         "dimension": task["dimension"],
         "lattice_size": task["lattice_size"],
         "alpha": task["alpha"],
         "gamma": task["gamma"],
         "g^4": task["g^4"],
-        "<phi^4>": float(np.mean(samples)),
-        "phi4_naive_standard_error": naive_standard_error,
+        "<phi^4>": float(phi_4_av),
+        "phi4_error": phi_4_error,
         "acceptance_rate": accepted / task["production_steps"],
         "warmup_steps": task["warmup_steps"],
         "production_steps": task["production_steps"],

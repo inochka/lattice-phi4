@@ -32,7 +32,6 @@ from scipy.integrate import quad
 def integration_weights(
     couplings: np.ndarray,
     upper: float,
-    interpolation: str = "cubic",
 ) -> np.ndarray:
     weights = np.empty(len(couplings), dtype=float)
 
@@ -40,22 +39,15 @@ def integration_weights(
         basis = np.zeros(len(couplings), dtype=float)
         basis[i] = 1.0
 
-        basis_interpolator = interp1d(
+        spline = CubicSpline(
             couplings,
             basis,
-            kind=interpolation,
-            fill_value="extrapolate",
-            assume_sorted=True,
+            extrapolate=True,
         )
 
-        weights[i] = quad(
-            basis_interpolator,
-            couplings[0],
-            upper,
-        )[0]
+        weights[i] = spline.integrate(0.0, upper)
 
     return weights
-
 
 
 def compute_free_energy(observables: pd.DataFrame, interpolation: str = "cubic") -> pd.DataFrame:
@@ -68,12 +60,13 @@ def compute_free_energy(observables: pd.DataFrame, interpolation: str = "cubic")
     rows: list[dict[str, float]] = []
     for gamma, gamma_data in observables.groupby("gamma", sort=True):
         gamma_data = (
-            gamma_data[["g^4", "<phi^4>"]]
+            gamma_data[["g^4", "<phi^4>", "phi4_error"]]
             .drop_duplicates(subset=["g^4"], keep="last")
             .sort_values("g^4")
         )
         couplings = gamma_data["g^4"].to_numpy(dtype=float)
         phi4 = gamma_data["<phi^4>"].to_numpy(dtype=float)
+        phi4_errors = gamma_data["phi4_error"].to_numpy(dtype=float)
 
         minimum_points = 4 if interpolation == "cubic" else 2
         if couplings.size < minimum_points:
@@ -90,12 +83,10 @@ def compute_free_energy(observables: pd.DataFrame, interpolation: str = "cubic")
                 couplings[0],
             )
 
-        derivative = interp1d(
+        derivative = CubicSpline(
             couplings,
             phi4,
-            kind=interpolation,
-            fill_value="extrapolate",
-            assume_sorted=True,
+            extrapolate=True,
         )
 
         weights = integration_weights(
@@ -103,16 +94,23 @@ def compute_free_energy(observables: pd.DataFrame, interpolation: str = "cubic")
             couplings[-1],
         )
 
-
         for i, coupling in enumerate(couplings):
-            integral, quadrature_error = quad(lambda value: float(derivative(value)), 0.0, coupling)
+            integral, quadrature_error = derivative.integrate(0.0, coupling) if coupling > 0 else 0., 0.
+            #quad(lambda value: float(derivative(value)), 0.0, coupling)
 
             # variance of sum of independent (different couplings) random variables
+
+            weights = integration_weights(
+                couplings,
+                coupling,
+            )
+
             hmc_error = (
                 np.sqrt(
-                    np.sum((weights[:i] * observables["phi4_naive_standard_error"][:i]) ** 2)
+                    np.sum((weights * phi4_errors) ** 2)
                 )
             )
+            # for couplings which are out of range we automatically obtain zeros due to integration weights
 
             rows.append(
                 {

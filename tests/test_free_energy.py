@@ -26,7 +26,7 @@ class FreeEnergyReductionTests(unittest.TestCase):
         for _ in range(3):
             lattice.hmc()
         configurations = []
-        for iteration in range(6):
+        for iteration in range(10):
             phi, _ = lattice.hmc()
             if iteration % 2 == 0:
                 configurations.append(np.array(phi, copy=True))
@@ -39,7 +39,7 @@ class FreeEnergyReductionTests(unittest.TestCase):
             "gamma": 1.0,
             "g^4": 0.0,
             "warmup_steps": 3,
-            "production_steps": 6,
+            "production_steps": 10,
             "sample_every": 2,
             "base_leapfrog_steps": 100,
             "base_seed": 1729,
@@ -53,7 +53,7 @@ class FreeEnergyReductionTests(unittest.TestCase):
                 "g^4": [0.0, 1.0, 2.0, 3.0],
                 "gamma": [1.0, 1.0, 1.0, 1.0],
                 "<phi^4>": [24.0, 24.0, 24.0, 24.0],
-                "phi4_naive_standard_error": [0.1, 0.1, 0.1, 0.1],
+                "phi4_error": [0.1, 0.1, 0.1, 0.1],
             }
         )
         result = compute_free_energy(observables, interpolation="cubic")
